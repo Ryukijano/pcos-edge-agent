@@ -127,7 +127,7 @@ function displayResult(result, task) {
   // Execute via Chrome AI if routed there
   if (decision.surface === 'chrome_builtin_ai' && decision.chrome_api) {
     executeViaChromeAI(decision.chrome_api, plan, task);
-  } else if (decision.surface === 'android_litert_functiongemma' || decision.surface === 'android_litert_gemma_full') {
+  } else if (decision.surface.startsWith('android_litert')) {
     relayToAndroid(task, decision, result);
   } else if (decision.surface === 'cloud_llm_escalation') {
     output.textContent = `Cloud escalation: ${decision.reason}`;

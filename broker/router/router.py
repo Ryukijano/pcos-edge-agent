@@ -18,7 +18,8 @@ from broker.context.context_schema import (
 class Surface(str, Enum):
     CHROME_BUILTIN_AI = "chrome_builtin_ai"
     ANDROID_FUNCTION_GEMMA = "android_litert_functiongemma"
-    ANDROID_GEMMA_FULL = "android_litert_gemma_full"
+    ANDROID_GEMMA_E2B = "android_litert_gemma_e2b"
+    ANDROID_GEMMA_E4B = "android_litert_gemma_e4b"
     PIECESOS_MEMORY = "piecesos_memory_then_local"
     CLOUD_LLM = "cloud_llm_escalation"
 
@@ -70,21 +71,24 @@ def route(task: TaskObject, context: Optional[PCOSContext] = None) -> RoutingDec
     is_offline = ctx.is_offline()
 
     # 1. Private or offline tasks → Android LiteRT-LM (never leaves device)
+    #    Use E4B for reasoning, E2B for transforms (faster, less memory)
     if task.is_private() or is_offline:
+        model = Surface.ANDROID_GEMMA_E4B if task.task_type == TaskType.REASONING else Surface.ANDROID_GEMMA_E2B
         return RoutingDecision(
-            surface=Surface.ANDROID_FUNCTION_GEMMA,
-            reason="Private/offline task: stays on device",
+            surface=model,
+            reason=f"Private/offline task: stays on device ({model.value})",
             context_payload=_build_payload(ctx, task),
-            latency_target_ms=300,
+            latency_target_ms=300 if model == Surface.ANDROID_GEMMA_E2B else 1000,
         )
 
     # 2. Multimodal non-web tasks → Android (Chrome can't do image/audio locally)
+    #    E4B has multimodal capabilities, E2B is text-only
     if task.modality in (Modality.IMAGE, Modality.AUDIO) and not task.is_webpage_grounded:
         return RoutingDecision(
-            surface=Surface.ANDROID_FUNCTION_GEMMA,
-            reason="Multimodal task without browser grounding: Android handles locally",
+            surface=Surface.ANDROID_GEMMA_E4B,
+            reason="Multimodal task without browser grounding: Android Gemma 4 E4B handles locally",
             context_payload=_build_payload(ctx, task),
-            latency_target_ms=300,
+            latency_target_ms=1000,
         )
 
     # 3. Short browser-grounded transform tasks → Chrome Built-in AI
@@ -143,15 +147,17 @@ def route(task: TaskObject, context: Optional[PCOSContext] = None) -> RoutingDec
         return RoutingDecision(
             surface=Surface.CHROME_BUILTIN_AI,
             chrome_api=ChromeAPI.PROMPT,
-            reason="Default local inference: Chrome Prompt API (short, browser-grounded)",
+            reason="Default local inference: Chrome LanguageModel (short, browser-grounded)",
             context_payload=_build_payload(ctx, task),
             latency_target_ms=500,
         )
+    # Use E4B for reasoning/complex tasks, E2B for simple transforms
+    default_model = Surface.ANDROID_GEMMA_E4B if task.task_type == TaskType.REASONING else Surface.ANDROID_GEMMA_E2B
     return RoutingDecision(
-        surface=Surface.ANDROID_GEMMA_FULL,
-        reason="Default local inference: Android Gemma full",
+        surface=default_model,
+        reason=f"Default local inference: Android {default_model.value}",
         context_payload=_build_payload(ctx, task),
-        latency_target_ms=2000,
+        latency_target_ms=1000 if default_model == Surface.ANDROID_GEMMA_E2B else 2000,
     )
 
 

@@ -27,8 +27,15 @@ _SYSTEM_PROMPTS = {
         "You are an on-device assistant. Use the provided tools when action is needed. "
         "Keep responses concise. Never reveal private data externally."
     ),
-    Surface.ANDROID_GEMMA_FULL: (
-        "You are a helpful on-device assistant. Answer concisely using the provided context. "
+    Surface.ANDROID_GEMMA_E2B: (
+        "You are a helpful on-device assistant running on Gemma 4 E2B. "
+        "Answer concisely using the provided context. "
+        "If context is insufficient, say so rather than guessing."
+    ),
+    Surface.ANDROID_GEMMA_E4B: (
+        "You are a helpful on-device assistant running on Gemma 4 E4B. "
+        "Answer concisely using the provided context. "
+        "You can handle complex reasoning and multimodal inputs. "
         "If context is insufficient, say so rather than guessing."
     ),
     Surface.PIECESOS_MEMORY: (

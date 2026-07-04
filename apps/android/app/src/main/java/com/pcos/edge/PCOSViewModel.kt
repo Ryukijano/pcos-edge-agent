@@ -7,8 +7,34 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.google.ai.edge.litertlm.Backend
 
-enum class PCOSModel { FUNCTION_GEMMA, GEMMA_FULL }
+enum class PCOSModel {
+    FUNCTION_GEMMA,
+    GEMMA_4_E2B,
+    GEMMA_4_E4B,
+}
+
+/** Recommended backend for each model based on benchmark data. */
+fun PCOSModel.recommendedBackend(): Backend = when (this) {
+    PCOSModel.FUNCTION_GEMMA -> Backend.CPU()
+    PCOSModel.GEMMA_4_E2B -> Backend.GPU()
+    PCOSModel.GEMMA_4_E4B -> Backend.GPU()
+}
+
+/** Human-readable model info for UI display. */
+fun PCOSModel.displayName(): String = when (this) {
+    PCOSModel.FUNCTION_GEMMA -> "FunctionGemma 270M (CPU)"
+    PCOSModel.GEMMA_4_E2B -> "Gemma 4 E2B 2.3B (GPU)"
+    PCOSModel.GEMMA_4_E4B -> "Gemma 4 E4B 4.5B (GPU)"
+}
+
+/** Model size in MB for download progress display. */
+fun PCOSModel.sizeMb(): Int = when (this) {
+    PCOSModel.FUNCTION_GEMMA -> 289
+    PCOSModel.GEMMA_4_E2B -> 2583
+    PCOSModel.GEMMA_4_E4B -> 3654
+}
 
 data class PCOSUiState(
     val brokerConnected: Boolean = false,
@@ -154,13 +180,14 @@ class PCOSViewModel : AndroidViewModel(Application()) {
                 val surface = decision?.optString("surface") ?: ""
                 addOutput("  Routed to: $surface")
 
-                if (surface == "android_litert_functiongemma" || surface == "android_litert_gemma_full") {
+                if (surface.startsWith("android_litert")) {
                     val plan = routing.optJSONObject("plan")
                     val tools = plan?.optJSONArray("tools")
                     val result = if (tools != null && tools.length() > 0 && surface == "android_litert_functiongemma") {
                         addOutput("  Tools available: ${tools.length()}")
                         litertManager.inferWithTools(input, listOf(PCOSToolSet(getApplication())))
                     } else {
+                        addOutput("  Using ${_uiState.value.selectedModel.displayName()}")
                         litertManager.inferStreaming(input) { chunk ->
                             _uiState.value = _uiState.value.copy(
                                 streamingText = _uiState.value.streamingText + chunk

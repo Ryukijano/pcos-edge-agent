@@ -25,7 +25,7 @@ class TestPrivateOffline:
     def test_private_task_routes_to_android(self):
         t = _task(sensitivity=Sensitivity.PRIVATE)
         d = route(t)
-        assert d.surface == Surface.ANDROID_FUNCTION_GEMMA
+        assert d.surface in (Surface.ANDROID_GEMMA_E2B, Surface.ANDROID_GEMMA_E4B)
         assert "Private" in d.reason or "offline" in d.reason
         assert not d.escalate_to_cloud
 
@@ -33,7 +33,7 @@ class TestPrivateOffline:
         t = _task()
         ctx = PCOSContext(android=AndroidContext(network_type=NetworkType.OFFLINE))
         d = route(t, ctx)
-        assert d.surface == Surface.ANDROID_FUNCTION_GEMMA
+        assert d.surface in (Surface.ANDROID_GEMMA_E2B, Surface.ANDROID_GEMMA_E4B)
         assert not d.escalate_to_cloud
 
 
@@ -41,12 +41,12 @@ class TestMultimodal:
     def test_image_non_web_routes_to_android(self):
         t = _task(modality=Modality.IMAGE, is_webpage_grounded=False)
         d = route(t)
-        assert d.surface == Surface.ANDROID_FUNCTION_GEMMA
+        assert d.surface == Surface.ANDROID_GEMMA_E4B
 
     def test_audio_non_web_routes_to_android(self):
         t = _task(modality=Modality.AUDIO, is_webpage_grounded=False)
         d = route(t)
-        assert d.surface == Surface.ANDROID_FUNCTION_GEMMA
+        assert d.surface == Surface.ANDROID_GEMMA_E4B
 
 
 class TestChromeBuiltinAI:
@@ -151,7 +151,7 @@ class TestDefault:
     def test_default_non_webpage_routes_to_android_gemma(self):
         t = _task(text="tell me a joke")
         d = route(t)
-        assert d.surface == Surface.ANDROID_GEMMA_FULL
+        assert d.surface == Surface.ANDROID_GEMMA_E2B
 
 
 # ── Privacy policy tests ───────────────────────────────────────

@@ -81,21 +81,33 @@ pcos-edge-agent/
 | Ambient | Pixel Watch 4 | Lightweight context signals, quick actions |
 | Cloud | Gemini / OpenAI | Overflow reasoning, long context only |
 
+## On-Device Models (LiteRT-LM)
+
+| Model | Size | Backend | Prefill (tk/s) | Decode (tk/s) | Use Case |
+|---|---|---|---|---|---|
+| FunctionGemma 270M | 289MB | CPU | 2238 | 154 | Function calling, tool use |
+| Gemma 4 E2B (2.3B) | 2.58GB | GPU | 3808 | 52 | General chat, transforms |
+| Gemma 4 E4B (4.5B) | 3.65GB | GPU | 1293 | 22 | Complex reasoning, multimodal |
+
+*Benchmarks from Samsung S26 Ultra. Adreno 730 (OnePlus 11R) uses OpenCL GPU backend with similar decode throughput. MTP/speculative decoding enabled for E2B/E4B. Apple Metal supported via LiteRT-LM Swift APIs.*
+
 ## Routing Policy
 
 ```python
 def route(task):
     if task.sensitivity == "private" or task.is_offline:
-        return "android_litert_functiongemma"
+        return "android_litert_gemma_e4b" if task.type == "reasoning" else "android_litert_gemma_e2b"
+    if task.modality in ("image", "audio") and not task.is_webpage_grounded:
+        return "android_litert_gemma_e4b"  # multimodal
     if task.is_webpage_grounded and task.is_short and task.task_type == "transform":
-        return "chrome_builtin_ai"  # Summarizer / Translator / Rewriter etc.
+        return "chrome_builtin_ai"  # Summarizer / Translator / etc.
     if task.requires_personal_context:
         return "piecesos_memory_then_local"
     if task.requires_action:
-        return "android_functiongemma"
+        return "android_litert_functiongemma"
     if task.exceeds_local_limits:
         return "cloud_llm_escalation"
-    return "local_first_default"
+    return "android_litert_gemma_e2b"  # default local
 ```
 
 ## Chrome Built-in AI APIs (Chrome 138+)

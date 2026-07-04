@@ -100,8 +100,9 @@ WebSocket relay hub for Chrome ↔ Android communication.
 | Surface | Enum | Description |
 |---|---|---|
 | Chrome Built-in AI | `chrome_builtin_ai` | Browser-side AI APIs |
-| Android FunctionGemma | `android_litert_functiongemma` | On-device function calling |
-| Android Gemma Full | `android_litert_gemma_full` | On-device full inference |
+| Android FunctionGemma | `android_litert_functiongemma` | On-device function calling (270M, CPU) |
+| Android Gemma 4 E2B | `android_litert_gemma_e2b` | On-device inference (2.3B, GPU+MTP) |
+| Android Gemma 4 E4B | `android_litert_gemma_e4b` | On-device full inference (4.5B, GPU+MTP, multimodal) |
 | PiecesOS Memory | `piecesos_memory_then_local` | LTM query then local |
 | Cloud LLM | `cloud_llm_escalation` | Cloud overflow |
 

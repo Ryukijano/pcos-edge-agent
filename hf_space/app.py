@@ -29,7 +29,8 @@ _settings = get_settings()
 SURFACE_DESCRIPTIONS = {
     "chrome_builtin_ai": "Chrome Built-in AI — runs in browser via LanguageModel/Summarizer/Translator, zero network latency",
     "android_litert_functiongemma": "Android FunctionGemma 270M — on-device function calling, CPU backend",
-    "android_litert_gemma_full": "Android Gemma 4 E2B — on-device full inference, GPU backend with MTP",
+    "android_litert_gemma_e2b": "Android Gemma 4 E2B (2.3B) — on-device inference, GPU backend with MTP, 0.8GB RAM",
+    "android_litert_gemma_e4b": "Android Gemma 4 E4B (4.5B) — on-device full inference, GPU backend with MTP, multimodal",
     "piecesos_memory_then_local": "PiecesOS Memory — query LTM then local model",
     "cloud_llm_escalation": "Cloud LLM — escalated to Gemini/OpenAI (last resort, PII-stripped)",
 }

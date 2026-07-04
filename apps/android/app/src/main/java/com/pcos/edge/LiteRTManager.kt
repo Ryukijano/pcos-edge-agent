@@ -50,9 +50,16 @@ class LiteRTManager(private val context: Context) {
             systemInstruction = Contents.of("You are a helpful on-device assistant. Use tools when appropriate."),
             enableMtp = false,
         ),
-        PCOSModel.GEMMA_FULL to ModelConfig(
+        PCOSModel.GEMMA_4_E2B to ModelConfig(
             fileName = "gemma-4-E2B-it.litertlm",
             hfUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm",
+            backend = Backend.GPU(),
+            systemInstruction = Contents.of("You are a helpful on-device assistant."),
+            enableMtp = true,
+        ),
+        PCOSModel.GEMMA_4_E4B to ModelConfig(
+            fileName = "gemma-4-E4B-it.litertlm",
+            hfUrl = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm",
             backend = Backend.GPU(),
             systemInstruction = Contents.of("You are a helpful on-device assistant."),
             enableMtp = true,
@@ -214,8 +221,8 @@ class LiteRTManager(private val context: Context) {
      */
     suspend fun inferWithTools(prompt: String, tools: List<ToolSet>): String = withContext(Dispatchers.IO) {
         val eng = engine ?: return@withContext "[Model not loaded]"
-        if (currentModel != PCOSModel.FUNCTION_GEMMA) {
-            return@withContext "[FunctionGemma not loaded]"
+        if (currentModel != PCOSModel.FUNCTION_GEMMA && currentModel != PCOSModel.GEMMA_4_E2B && currentModel != PCOSModel.GEMMA_4_E4B) {
+            return@withContext "[No model loaded]"
         }
 
         try {

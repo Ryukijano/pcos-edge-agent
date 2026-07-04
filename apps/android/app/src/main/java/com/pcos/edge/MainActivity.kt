@@ -63,11 +63,21 @@ fun PCOSApp(viewModel: PCOSViewModel = viewModel()) {
                 label = { Text("FunctionGemma 270M") }
             )
             FilterChip(
-                selected = uiState.selectedModel == PCOSModel.GEMMA_FULL,
-                onClick = { viewModel.selectModel(PCOSModel.GEMMA_FULL) },
-                label = { Text("Gemma 4 Full") }
+                selected = uiState.selectedModel == PCOSModel.GEMMA_4_E2B,
+                onClick = { viewModel.selectModel(PCOSModel.GEMMA_4_E2B) },
+                label = { Text("Gemma 4 E2B") }
+            )
+            FilterChip(
+                selected = uiState.selectedModel == PCOSModel.GEMMA_4_E4B,
+                onClick = { viewModel.selectModel(PCOSModel.GEMMA_4_E4B) },
+                label = { Text("Gemma 4 E4B") }
             )
         }
+        Text(
+            "${uiState.selectedModel.displayName()} · ${uiState.selectedModel.sizeMb()}MB",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
 
         // Input
         OutlinedTextField(

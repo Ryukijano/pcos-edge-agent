@@ -221,7 +221,8 @@ route(task, ctx)
 │
 └─ 8. DEFAULT
       ├─ is_webpage_grounded AND is_short → CHROME_BUILTIN_AI (PROMPT)
-      └─ else → ANDROID_GEMMA_FULL
+      ├─ task_type == REASONING → ANDROID_GEMMA_E4B
+      └─ else → ANDROID_GEMMA_E2B
 ```
 
 ---
@@ -256,8 +257,8 @@ route(task, ctx)
 
 ## Key Enums
 
-### Surface (5 values)
-`chrome_builtin_ai` · `android_litert_functiongemma` · `android_litert_gemma_full` · `piecesos_memory_then_local` · `cloud_llm_escalation`
+### Surface (6 values)
+`chrome_builtin_ai` · `android_litert_functiongemma` · `android_litert_gemma_e2b` · `android_litert_gemma_e4b` · `piecesos_memory_then_local` · `cloud_llm_escalation`
 
 ### ChromeAPI (7 values)
 `prompt` · `summarizer` · `translator` · `language_detector` · `writer` · `rewriter` · `proofreader`
