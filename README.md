@@ -88,8 +88,37 @@ pcos-edge-agent/
 | FunctionGemma 270M | 289MB | CPU | 2238 | 154 | Function calling, tool use |
 | Gemma 4 E2B (2.3B) | 2.58GB | GPU | 3808 | 52 | General chat, transforms |
 | Gemma 4 E4B (4.5B) | 3.65GB | GPU | 1293 | 22 | Complex reasoning, multimodal |
+| Gemma 4 E2B Mobile (QAT) | 1.1GB | GPU | ~3500 | ~48 | Low-RAM devices, text-only |
+| Gemma 4 E4B Mobile (QAT) | 2.5GB | GPU | ~1200 | ~20 | Low-RAM reasoning + multimodal |
 
-*Benchmarks from Samsung S26 Ultra. Adreno 730 (OnePlus 11R) uses OpenCL GPU backend with similar decode throughput. MTP/speculative decoding enabled for E2B/E4B. Apple Metal supported via LiteRT-LM Swift APIs. NPU (Qualcomm QNN) supported on Snapdragon 8 Gen 2+ with auto-fallback to GPU/CPU.*
+*Benchmarks from Samsung S26 Ultra. Adreno 730 (OnePlus 11R) uses OpenCL GPU backend with similar decode throughput. MTP/speculative decoding enabled for E2B/E4B. Apple Metal supported via LiteRT-LM Swift APIs. NPU (Qualcomm QNN) supported on Snapdragon 8 Gen 2+ with auto-fallback to GPU/CPU. QAT mobile models use Google's wNa8o8 quantization schema with targeted 2-bit decoding layers and optimized KV caches.*
+
+### QAT Mobile Quantization
+
+Google released Quantization-Aware Training (QAT) checkpoints for Gemma 4 E2B and E4B with a custom mobile-optimized quantization schema:
+
+- **Targeted 2-bit quantization** — decoding layers heavily compressed, reasoning layers kept at higher precision
+- **Static activations** — pre-calculated scaling reduces mobile processor workload
+- **Channel-wise quantization** — structured for mobile accelerator hardware
+- **KV cache optimization** — compressed vocabulary and short-term memory for longer chats in less RAM
+
+Result: **E2B text-only fits in <1GB RAM** (vs 2.58GB standard), making it viable on devices with 4GB RAM.
+
+### Chrome WebGPU Surface
+
+Browser-grounded reasoning tasks now run **Gemma 4 E2B/E4B directly in Chrome** via the LiteRT-LM JavaScript API with WebGPU acceleration:
+
+```javascript
+import { Engine } from 'https://cdn.jsdelivr.net/npm/@litert-lm/core/+esm';
+const engine = await Engine.create({
+  model: 'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it-web.litertlm'
+});
+```
+
+- No relay to Android needed for browser tasks
+- Streaming inference via `sendMessageStreaming()`
+- Auto-fallback to Chrome Built-in AI if WebGPU unavailable
+- E2B for transforms, E4B for reasoning (auto-selected by broker)
 
 ### Backend Auto-Selection
 
@@ -122,6 +151,8 @@ def route(task):
         return "android_litert_gemma_e4b"  # multimodal
     if task.is_webpage_grounded and task.is_short and task.task_type == "transform":
         return "chrome_builtin_ai"  # Summarizer / Translator / etc.
+    if task.is_webpage_grounded and (task.type == "reasoning" or not task.is_short):
+        return "chrome_webgpu"  # Gemma 4 E2B/E4B in browser via WebGPU
     if task.requires_personal_context:
         return "piecesos_memory_then_local"
     if task.requires_action:

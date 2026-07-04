@@ -13,6 +13,8 @@ enum class PCOSModel {
     FUNCTION_GEMMA,
     GEMMA_4_E2B,
     GEMMA_4_E4B,
+    GEMMA_4_E2B_MOBILE,
+    GEMMA_4_E4B_MOBILE,
 }
 
 /** Recommended backend for each model based on benchmark data. */
@@ -20,6 +22,8 @@ fun PCOSModel.recommendedBackend(): Backend = when (this) {
     PCOSModel.FUNCTION_GEMMA -> Backend.CPU()
     PCOSModel.GEMMA_4_E2B -> Backend.GPU()
     PCOSModel.GEMMA_4_E4B -> Backend.GPU()
+    PCOSModel.GEMMA_4_E2B_MOBILE -> Backend.GPU()
+    PCOSModel.GEMMA_4_E4B_MOBILE -> Backend.GPU()
 }
 
 /** Human-readable model info for UI display. */
@@ -27,6 +31,8 @@ fun PCOSModel.displayName(): String = when (this) {
     PCOSModel.FUNCTION_GEMMA -> "FunctionGemma 270M (CPU)"
     PCOSModel.GEMMA_4_E2B -> "Gemma 4 E2B 2.3B (GPU)"
     PCOSModel.GEMMA_4_E4B -> "Gemma 4 E4B 4.5B (GPU)"
+    PCOSModel.GEMMA_4_E2B_MOBILE -> "Gemma 4 E2B Mobile 1GB (QAT)"
+    PCOSModel.GEMMA_4_E4B_MOBILE -> "Gemma 4 E4B Mobile 2.2GB (QAT)"
 }
 
 /** Model size in MB for download progress display. */
@@ -34,6 +40,8 @@ fun PCOSModel.sizeMb(): Int = when (this) {
     PCOSModel.FUNCTION_GEMMA -> 289
     PCOSModel.GEMMA_4_E2B -> 2583
     PCOSModel.GEMMA_4_E4B -> 3654
+    PCOSModel.GEMMA_4_E2B_MOBILE -> 1100
+    PCOSModel.GEMMA_4_E4B_MOBILE -> 2500
 }
 
 data class PCOSUiState(

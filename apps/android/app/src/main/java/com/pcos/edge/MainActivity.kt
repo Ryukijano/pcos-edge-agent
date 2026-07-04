@@ -69,17 +69,27 @@ fun PCOSApp(viewModel: PCOSViewModel = viewModel()) {
             FilterChip(
                 selected = uiState.selectedModel == PCOSModel.FUNCTION_GEMMA,
                 onClick = { viewModel.selectModel(PCOSModel.FUNCTION_GEMMA) },
-                label = { Text("FunctionGemma 270M") }
+                label = { Text("FG 270M") }
             )
             FilterChip(
                 selected = uiState.selectedModel == PCOSModel.GEMMA_4_E2B,
                 onClick = { viewModel.selectModel(PCOSModel.GEMMA_4_E2B) },
-                label = { Text("Gemma 4 E2B") }
+                label = { Text("E2B") }
             )
             FilterChip(
                 selected = uiState.selectedModel == PCOSModel.GEMMA_4_E4B,
                 onClick = { viewModel.selectModel(PCOSModel.GEMMA_4_E4B) },
-                label = { Text("Gemma 4 E4B") }
+                label = { Text("E4B") }
+            )
+            FilterChip(
+                selected = uiState.selectedModel == PCOSModel.GEMMA_4_E2B_MOBILE,
+                onClick = { viewModel.selectModel(PCOSModel.GEMMA_4_E2B_MOBILE) },
+                label = { Text("E2B Mobile") }
+            )
+            FilterChip(
+                selected = uiState.selectedModel == PCOSModel.GEMMA_4_E4B_MOBILE,
+                onClick = { viewModel.selectModel(PCOSModel.GEMMA_4_E4B_MOBILE) },
+                label = { Text("E4B Mobile") }
             )
         }
         Text(

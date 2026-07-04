@@ -127,6 +127,8 @@ function displayResult(result, task) {
   // Execute via Chrome AI if routed there
   if (decision.surface === 'chrome_builtin_ai' && decision.chrome_api) {
     executeViaChromeAI(decision.chrome_api, plan, task);
+  } else if (decision.surface === 'chrome_webgpu') {
+    executeViaWebGPU(task, decision, plan);
   } else if (decision.surface.startsWith('android_litert')) {
     relayToAndroid(task, decision, result);
   } else if (decision.surface === 'cloud_llm_escalation') {
@@ -139,6 +141,69 @@ function displayResult(result, task) {
 }
 
 // ── Chrome Built-in AI execution ───────────────────────────────
+
+// ── WebGPU execution (LiteRT-LM JS API) ─────────────────────────
+
+async function executeViaWebGPU(task, decision, plan) {
+  output.textContent = '';
+  const statusEl = document.createElement('p');
+  statusEl.className = 'placeholder';
+  statusEl.textContent = `Initializing WebGPU (${decision.reason})…`;
+  output.appendChild(statusEl);
+
+  try {
+    const { isWebGPUAvailable, initEngine, inferWebGPU, E2B_WEB_URL, E4B_WEB_URL } =
+      await import('./webgpu-engine.js');
+
+    const webgpuOk = await isWebGPUAvailable();
+    if (!webgpuOk) {
+      statusEl.textContent = 'WebGPU not available. Falling back to Chrome Built-in AI.';
+      // Fallback to Chrome LanguageModel API
+      if (window.LanguageModel) {
+        executeViaChromeAI('prompt', plan, task);
+      } else {
+        output.textContent = 'WebGPU not available and Chrome AI not supported.';
+      }
+      return;
+    }
+
+    // Pick model: E2B for transforms, E4B for reasoning
+    const modelUrl = task.task_type === 'reasoning' ? E4B_WEB_URL : E2B_WEB_URL;
+    const modelName = modelUrl === E4B_WEB_URL ? 'Gemma 4 E4B' : 'Gemma 4 E2B';
+
+    statusEl.textContent = `Loading ${modelName} via WebGPU…`;
+    const initialized = await initEngine(modelUrl, (msg) => {
+      statusEl.textContent = msg;
+    });
+    if (!initialized) {
+      statusEl.textContent = 'WebGPU engine init failed. Try Chrome Built-in AI instead.';
+      return;
+    }
+
+    // Build prompt with context prefix
+    const prefix = plan?.context_prefix || plan?.system_prompt || '';
+    const fullPrompt = prefix ? `${prefix}\n\n${task.text}` : task.text;
+
+    output.textContent = '';
+    const resultEl = document.createElement('div');
+    resultEl.className = 'output-text';
+    output.appendChild(resultEl);
+
+    statusEl.textContent = `${modelName} generating…`;
+    const result = await inferWebGPU(fullPrompt, (chunk) => {
+      resultEl.textContent += chunk;
+    }, (msg) => {
+      statusEl.textContent = msg;
+    });
+
+    if (statusEl.textContent.includes('generating')) {
+      statusEl.textContent = `${modelName} complete via WebGPU`;
+    }
+  } catch (e) {
+    statusEl.textContent = `WebGPU error: ${e.message}`;
+    console.error('[PCOS WebGPU]', e);
+  }
+}
 
 // ── Relay to Android via bridge ────────────────────────────────
 

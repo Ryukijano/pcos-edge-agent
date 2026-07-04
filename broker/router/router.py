@@ -17,6 +17,7 @@ from broker.context.context_schema import (
 
 class Surface(str, Enum):
     CHROME_BUILTIN_AI = "chrome_builtin_ai"
+    CHROME_WEBGPU = "chrome_webgpu"
     ANDROID_FUNCTION_GEMMA = "android_litert_functiongemma"
     ANDROID_GEMMA_E2B = "android_litert_gemma_e2b"
     ANDROID_GEMMA_E4B = "android_litert_gemma_e4b"
@@ -92,6 +93,7 @@ def route(task: TaskObject, context: Optional[PCOSContext] = None) -> RoutingDec
         )
 
     # 3. Short browser-grounded transform tasks → Chrome Built-in AI
+    #    But if the task needs reasoning or is long, use WebGPU (Gemma 4 in browser)
     if task.is_webpage_grounded and task.is_short and task.task_type == TaskType.TRANSFORM:
         api = _select_chrome_api(task)
         return RoutingDecision(
@@ -100,6 +102,15 @@ def route(task: TaskObject, context: Optional[PCOSContext] = None) -> RoutingDec
             reason=f"Short browser-grounded transform: Chrome {api.value} API",
             context_payload=_build_payload(ctx, task),
             latency_target_ms=500,
+        )
+
+    # 3b. Browser-grounded reasoning or long tasks → Chrome WebGPU (Gemma 4 E2B in browser)
+    if task.is_webpage_grounded and (task.task_type == TaskType.REASONING or not task.is_short):
+        return RoutingDecision(
+            surface=Surface.CHROME_WEBGPU,
+            reason="Browser-grounded reasoning: Chrome WebGPU (Gemma 4 E2B via LiteRT-LM JS)",
+            context_payload=_build_payload(ctx, task),
+            latency_target_ms=1000,
         )
 
     # 4. Personal context tasks → PiecesOS memory first, then local model
