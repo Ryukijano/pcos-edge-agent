@@ -9,6 +9,7 @@ The PCOS Wear OS app provides ambient health context signals and a glanceable ti
 - **Boot restore** — `BroadcastReceiver` + `WorkManager` worker re-registers passive monitoring after device reboot
 - **Data Layer sync** — Receives context updates from phone via `WearableListenerService` at `/pcos-context`
 - **Watch tile** — Heart rate, activity state, daily steps, and broker status at a glance
+- **Watch face complication** — Heart rate and activity state directly on the watch face via `ComplicationDataSourceService`
 - **Runtime permissions** — Requests `BODY_SENSORS`, `ACTIVITY_RECOGNITION`, `POST_NOTIFICATIONS` at first launch
 - **Splash screen** — 48dp icon on black background (WO-V15)
 - **Standalone app** — Declared as standalone in manifest (Play Store requirement)
@@ -25,14 +26,17 @@ PhoneDataListenerService ──► WatchState (shared StateFlow)
                                 │
     Health Services              ├── MainActivity (Compose UI)
     │                            ├── PCOSTileService (Tile)
-    ├── MeasureClient (foreground HR)  └── PCOSOngoingActivity (WO-V4)
-    └── PassiveHealthService (background)
+    ├── MeasureClient (foreground HR)  ├── PCOSOngoingActivity (WO-V4)
+    └── PassiveHealthService (background)  └── PCOSComplicationDataSourceService
             │
             ├── HEART_RATE_BPM
             ├── STEPS_DAILY
             └── UserActivityInfo (asleep/awake/exercise)
 
     BootReceiver ──► RegisterPassiveDataWorker ──► PassiveHealthService.register()
+
+    WatchState.update() ──► ComplicationDataSourceUpdateRequester.requestUpdate()
+    (push updates, no polling)
 ```
 
 ## Health Services
@@ -60,6 +64,16 @@ PhoneDataListenerService ──► WatchState (shared StateFlow)
 - Notification channel: `pcos_health_monitoring` (IMPORTANCE_LOW)
 - Started on permission grant, stopped on activity destroy
 - Updates in real-time as `WatchState` changes
+
+### Watch Face Complications
+- `PCOSComplicationDataSourceService` extends `SuspendingComplicationDataSourceService`
+- Provides heart rate and activity state directly on the watch face
+- Supports `SHORT_TEXT` (e.g. "72 bpm" with "Idle" title) and `SMALL_IMAGE` (icon) types
+- Tappable — opens MainActivity when tapped
+- Push updates via `ComplicationDataSourceUpdateRequester` — no polling
+- `WatchState.update()` automatically triggers complication refresh
+- 5-minute fallback update period (system minimum for battery life)
+- White heart icon for complication picker
 
 ## Permissions
 

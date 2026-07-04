@@ -1,6 +1,8 @@
 package com.pcos.watch
 
+import android.content.Context
 import android.util.Log
+import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUpdateRequester
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.wearable.DataEvent
@@ -58,11 +60,13 @@ class PhoneDataListenerService : WearableListenerService() {
 }
 
 /**
- * Shared state between Data Layer listener, UI, and tile.
+ * Shared state between Data Layer listener, UI, tile, and complications.
  */
 object WatchState {
     private val _state = MutableStateFlow(WatchData())
     val state: StateFlow<WatchData> = _state.asStateFlow()
+
+    private var updateRequester: ComplicationDataSourceUpdateRequester? = null
 
     data class WatchData(
         val activityState: String = "idle",
@@ -72,6 +76,13 @@ object WatchState {
         val watchHeartRate: Int? = null,
         val dailySteps: Int = 0,
     )
+
+    fun init(context: Context) {
+        updateRequester = ComplicationDataSourceUpdateRequester.create(
+            context,
+            PCOSComplicationDataSourceService::class.java,
+        )
+    }
 
     fun update(
         activityState: String? = null,
@@ -89,5 +100,14 @@ object WatchState {
             watchHeartRate = watchHeartRate ?: _state.value.watchHeartRate,
             dailySteps = dailySteps ?: _state.value.dailySteps,
         )
+        requestComplicationUpdate()
+    }
+
+    fun requestComplicationUpdate() {
+        try {
+            updateRequester?.requestUpdate()
+        } catch (e: Exception) {
+            Log.w("PCOS-WatchState", "Complication update request failed", e)
+        }
     }
 }

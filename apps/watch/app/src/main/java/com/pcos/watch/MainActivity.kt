@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
         healthMonitor = HealthMonitor(this)
         ongoingActivity = PCOSOngoingActivity(this)
 
+        WatchState.init(this)
         PCOSOngoingActivity.createChannel(this)
 
         val requiredPerms = mutableListOf(

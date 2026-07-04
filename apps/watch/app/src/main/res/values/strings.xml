@@ -14,6 +14,9 @@
     <string name="ongoing_activity_title">PCOS Active</string>
     <string name="ongoing_activity_text">Monitoring health · Broker connected</string>
 
+    <!-- Complication -->
+    <string name="complication_label">PCOS Heart Rate</string>
+
     <!-- UI labels -->
     <string name="label_heart_rate">Heart Rate</string>
     <string name="label_activity">Activity</string>

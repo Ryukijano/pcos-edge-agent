@@ -68,4 +68,7 @@ dependencies {
 
     // Ongoing Activity (Wear OS requirement WO-V4)
     implementation("androidx.wear:wear-ongoing:1.1.0")
+
+    // Complications data source (watch face complications)
+    implementation("androidx.wear.watchface:watchface-complications-data-source-ktx:1.2.1")
 }
