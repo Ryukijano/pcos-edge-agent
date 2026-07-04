@@ -1,2 +1,3 @@
-# Planner: given a RoutingDecision + PCOSContext, builds the final prompt and tool plan.
-# To be implemented in T4.
+from .planner import build_plan, ExecutionPlan, FUNCTIONGEMMA_TOOLS
+
+__all__ = ["build_plan", "ExecutionPlan", "FUNCTIONGEMMA_TOOLS"]

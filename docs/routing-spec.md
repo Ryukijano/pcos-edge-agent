@@ -9,7 +9,7 @@ Incoming Task
       │         └── YES → Android LiteRT-LM / FunctionGemma
       │
       ├── is_webpage_grounded AND is_short AND is_transform?
-      │         └── YES → Chrome Built-in AI (Prompt/Summarizer/Classifier etc.)
+      │         └── YES → Chrome Built-in AI (Prompt/Summarizer/Translator/etc.)
       │
       ├── requires_personal_context OR workflow_memory?
       │         └── YES → PiecesOS LTM → local model
@@ -30,9 +30,9 @@ Incoming Task
 | Summarize article | Summarizer API (speed mode for quick, capability for quality) |
 | Rewrite email | Rewriter API |
 | Proofread text | Proofreader API |
-| Classify intent | Classifier API |
+| Translate text | Translator API |
+| Detect language | Language Detector API |
 | General NLP chat | Prompt API |
-| Image/audio task | Multimodal Prompt API |
 | Long-form writing | Writer API |
 
 ## Escalation Policy

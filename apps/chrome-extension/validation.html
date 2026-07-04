@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PCOS — Chrome Built-in AI Validation</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background: #1a1a2e; color: #e0e0e0; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 16px; margin-top: 24px; color: #4e9eff; }
+    .test-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #233; }
+    .test-name { width: 180px; font-size: 13px; }
+    .test-status { font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+    .test-status.pass { background: #2d4a2d; color: #4caf50; }
+    .test-status.fail { background: #4a2d2d; color: #f44336; }
+    .test-status.pending { background: #333; color: #888; }
+    .test-result { flex: 1; font-size: 12px; color: #aaa; font-family: monospace; white-space: pre-wrap; }
+    button { background: #4e9eff; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    button:hover { opacity: 0.85; }
+    .summary { margin-top: 24px; padding: 12px; background: #16213e; border-radius: 8px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>PCOS — Chrome Built-in AI Validation</h1>
+  <p style="color:#888;font-size:13px">Tests all 5 Chrome AI APIs + Gemma 4 backend + speculative decoding. No network requests should occur.</p>
+  <button onclick="runAllTests()">Run All Tests</button>
+
+  <h2>API Availability</h2>
+  <div id="availability-tests"></div>
+
+  <h2>Functional Tests</h2>
+  <div id="functional-tests"></div>
+
+  <div class="summary" id="summary"></div>
+
+  <script>
+    const results = {};
+
+    function setStatus(rowId, status, result = '') {
+      const row = document.getElementById(rowId);
+      if (!row) return;
+      const statusEl = row.querySelector('.test-status');
+      const resultEl = row.querySelector('.test-result');
+      statusEl.className = `test-status ${status}`;
+      statusEl.textContent = status.toUpperCase();
+      if (result) resultEl.textContent = result;
+      results[rowId] = status;
+    }
+
+    function createTestRow(container, id, name) {
+      const row = document.createElement('div');
+      row.className = 'test-row';
+      row.id = id;
+      row.innerHTML = `<span class="test-name">${name}</span><span class="test-status pending">PENDING</span><span class="test-result"></span>`;
+      container.appendChild(row);
+    }
+
+    async function runAllTests() {
+      const availContainer = document.getElementById('availability-tests');
+      const funcContainer = document.getElementById('functional-tests');
+      availContainer.innerHTML = '';
+      funcContainer.innerHTML = '';
+
+      // Availability checks
+      const apis = ['languageModel', 'summarizer', 'rewriter', 'proofreader', 'classifier', 'writer'];
+      for (const api of apis) {
+        createTestRow(availContainer, `avail-${api}`, `${api} available`);
+      }
+
+      // Functional tests
+      createTestRow(funcContainer, 'func-summarizer', 'Summarizer API');
+      createTestRow(funcContainer, 'func-prompt', 'Prompt API (Gemma 4)');
+      createTestRow(funcContainer, 'func-classifier', 'Classifier API');
+      createTestRow(funcContainer, 'func-rewriter', 'Rewriter API');
+      createTestRow(funcContainer, 'func-proofreader', 'Proofreader API');
+      createTestRow(funcContainer, 'func-writer', 'Writer API');
+      createTestRow(funcContainer, 'func-streaming', 'Streaming (speculative decoding)');
+
+      // Run availability
+      for (const api of apis) {
+        try {
+          if (!window.ai?.[api]) {
+            setStatus(`avail-${api}`, 'fail', 'window.ai.' + api + ' not found');
+            continue;
+          }
+          const avail = await window.ai[api].availability();
+          setStatus(`avail-${api}`, avail === 'available' ? 'pass' : 'fail', avail);
+        } catch (e) {
+          setStatus(`avail-${api}`, 'fail', e.message);
+        }
+      }
+
+      // Functional: Summarizer
+      try {
+        const s = await window.ai.summarizer.create({ type: 'key-points', format: 'plain-text', length: 'short' });
+        const result = await s.summarize('The quick brown fox jumps over the lazy dog. This is a test sentence for summarization.');
+        s.destroy();
+        setStatus('func-summarizer', 'pass', result.slice(0, 80));
+      } catch (e) { setStatus('func-summarizer', 'fail', e.message); }
+
+      // Functional: Prompt API
+      try {
+        const session = await window.ai.languageModel.create({ systemPrompt: 'You are a helpful assistant.' });
+        const result = await session.prompt('Say hello in one word.');
+        session.destroy();
+        setStatus('func-prompt', 'pass', result.slice(0, 80));
+      } catch (e) { setStatus('func-prompt', 'fail', e.message); }
+
+      // Functional: Classifier
+      try {
+        const c = await window.ai.classifier.create();
+        const result = await c.classify('I love this product!');
+        c.destroy();
+        setStatus('func-classifier', 'pass', JSON.stringify(result));
+      } catch (e) { setStatus('func-classifier', 'fail', e.message); }
+
+      // Functional: Rewriter
+      try {
+        const r = await window.ai.rewriter.create({ tone: 'more-formal' });
+        const result = await r.rewrite('hey can u help me?');
+        r.destroy();
+        setStatus('func-rewriter', 'pass', result.slice(0, 80));
+      } catch (e) { setStatus('func-rewriter', 'fail', e.message); }
+
+      // Functional: Proofreader
+      try {
+        const p = await window.ai.proofreader.create();
+        const result = await p.proofread('this are a test sentence with erors');
+        p.destroy();
+        setStatus('func-proofreader', 'pass', result.slice(0, 80));
+      } catch (e) { setStatus('func-proofreader', 'fail', e.message); }
+
+      // Functional: Writer
+      try {
+        const w = await window.ai.writer.create();
+        const result = await w.write('Write a short greeting email.');
+        w.destroy();
+        setStatus('func-writer', 'pass', result.slice(0, 80));
+      } catch (e) { setStatus('func-writer', 'fail', e.message); }
+
+      // Functional: Streaming
+      try {
+        const session = await window.ai.languageModel.create();
+        let chunkCount = 0;
+        const stream = await session.promptStreaming('Count from 1 to 5.');
+        for await (const chunk of stream) { chunkCount++; }
+        session.destroy();
+        setStatus('func-streaming', chunkCount > 1 ? 'pass' : 'fail', `${chunkCount} chunks received`);
+      } catch (e) { setStatus('func-streaming', 'fail', e.message); }
+
+      // Summary
+      const all = Object.values(results);
+      const passed = all.filter(s => s === 'pass').length;
+      const failed = all.filter(s => s === 'fail').length;
+      document.getElementById('summary').innerHTML = `<b>${passed}</b> passed, <b>${failed}</b> failed out of ${all.length} tests. ${failed === 0 ? '✅ All Chrome AI APIs working locally.' : '⚠️ Some APIs unavailable. Check chrome://on-device-internals'}`;
+    }
+  </script>
+</body>
+</html>

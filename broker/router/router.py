@@ -1,7 +1,18 @@
-"""PCOS Context Broker — routing logic."""
-from dataclasses import dataclass
+"""PCOS Context Broker — routing logic.
+
+Deterministic routing decision tree. No LLM reasoning here — just
+policy-based dispatch: collect → rank → compress → choose_model → choose_tool.
+"""
+from __future__ import annotations
+
 from enum import Enum
 from typing import Optional
+
+from pydantic import BaseModel, Field
+
+from broker.context.context_schema import (
+    TaskObject, PCOSContext, Modality, Sensitivity, TaskType, NetworkType,
+)
 
 
 class Surface(str, Enum):
@@ -15,84 +26,168 @@ class Surface(str, Enum):
 class ChromeAPI(str, Enum):
     PROMPT = "prompt"
     SUMMARIZER = "summarizer"
-    CLASSIFIER = "classifier"
+    TRANSLATOR = "translator"
+    LANGUAGE_DETECTOR = "language_detector"
     WRITER = "writer"
     REWRITER = "rewriter"
     PROOFREADER = "proofreader"
-    MULTIMODAL_PROMPT = "multimodal_prompt"
 
 
-@dataclass
-class Task:
-    text: str
-    modality: str = "text"          # text | image | audio
-    sensitivity: str = "normal"     # private | normal
-    task_type: str = "transform"    # transform | action | reasoning | retrieval
-    is_short: bool = True
-    is_webpage_grounded: bool = False
-    requires_personal_context: bool = False
-    requires_action: bool = False
-    exceeds_local_limits: bool = False
-    confidence_threshold: float = 0.7
-
-
-@dataclass
-class RoutingDecision:
+class RoutingDecision(BaseModel):
+    """The output of the routing decision tree."""
     surface: Surface
     chrome_api: Optional[ChromeAPI] = None
     reason: str = ""
     escalate_to_cloud: bool = False
+    context_payload: dict = Field(default_factory=dict)
+    tool_plan: list[dict] = Field(default_factory=list)
+    latency_target_ms: int = 500
+
+    model_config = {"use_enum_values": True}
 
 
-def route(task: Task) -> RoutingDecision:
-    """Core routing decision tree."""
-    if task.sensitivity == "private" or (task.modality in ["image", "audio"] and not task.is_webpage_grounded):
+# ── Keyword tables for Chrome API selection ────────────────────
+
+_SUMMARIZER_KEYWORDS = {"summarize", "summary", "tldr", "summarise", "brief"}
+_TRANSLATOR_KEYWORDS = {"translate", "translation", "in french", "in spanish", "in german", "in japanese", "to french", "to spanish", "to german", "to japanese"}
+_LANGUAGE_DETECTOR_KEYWORDS = {"detect language", "what language", "which language", "language detection"}
+_REWRITER_KEYWORDS = {"rewrite", "rephrase", "paraphrase", "reword"}
+_PROOFREADER_KEYWORDS = {"proofread", "grammar", "correct", "fix typos"}
+_WRITER_KEYWORDS = {"write", "draft", "generate", "compose"}
+
+
+def route(task: TaskObject, context: Optional[PCOSContext] = None) -> RoutingDecision:
+    """Core routing decision tree.
+
+    Args:
+        task: The task to route.
+        context: Optional full PCOSContext for context-aware routing.
+
+    Returns:
+        RoutingDecision with surface, API, reason, context_payload, and tool_plan.
+    """
+    ctx = context or PCOSContext()
+    is_offline = ctx.is_offline()
+
+    # 1. Private or offline tasks → Android LiteRT-LM (never leaves device)
+    if task.is_private() or is_offline:
         return RoutingDecision(
             surface=Surface.ANDROID_FUNCTION_GEMMA,
-            reason="Private/offline task: stays on device"
+            reason="Private/offline task: stays on device",
+            context_payload=_build_payload(ctx, task),
+            latency_target_ms=300,
         )
-    if task.is_webpage_grounded and task.is_short and task.task_type == "transform":
+
+    # 2. Multimodal non-web tasks → Android (Chrome can't do image/audio locally)
+    if task.modality in (Modality.IMAGE, Modality.AUDIO) and not task.is_webpage_grounded:
+        return RoutingDecision(
+            surface=Surface.ANDROID_FUNCTION_GEMMA,
+            reason="Multimodal task without browser grounding: Android handles locally",
+            context_payload=_build_payload(ctx, task),
+            latency_target_ms=300,
+        )
+
+    # 3. Short browser-grounded transform tasks → Chrome Built-in AI
+    if task.is_webpage_grounded and task.is_short and task.task_type == TaskType.TRANSFORM:
         api = _select_chrome_api(task)
         return RoutingDecision(
             surface=Surface.CHROME_BUILTIN_AI,
             chrome_api=api,
-            reason=f"Short browser-grounded transform: using Chrome {api.value} API"
+            reason=f"Short browser-grounded transform: Chrome {api.value} API",
+            context_payload=_build_payload(ctx, task),
+            latency_target_ms=500,
         )
+
+    # 4. Personal context tasks → PiecesOS memory first, then local model
     if task.requires_personal_context:
         return RoutingDecision(
             surface=Surface.PIECESOS_MEMORY,
-            reason="Task requires personal workflow memory"
+            reason="Task requires personal workflow memory",
+            context_payload=_build_payload(ctx, task),
+            tool_plan=[{"step": "query_piecesos", "query": task.text, "top_k": 5}],
+            latency_target_ms=2000,
         )
+
+    # 5. Function/tool calls → FunctionGemma on device
     if task.requires_action:
         return RoutingDecision(
             surface=Surface.ANDROID_FUNCTION_GEMMA,
-            reason="Action/tool call: FunctionGemma on-device"
+            reason="Action/tool call: FunctionGemma on-device",
+            context_payload=_build_payload(ctx, task),
+            tool_plan=[{"step": "function_call", "model": "functiongemma_270m"}],
+            latency_target_ms=300,
         )
-    if task.exceeds_local_limits or (task.task_type == "reasoning" and not task.is_short):
+
+    # 6. Explicit user escalation → Cloud (user asked for it)
+    if task.user_explicit_escalate:
+        return RoutingDecision(
+            surface=Surface.CLOUD_LLM,
+            reason="User explicitly requested cloud escalation",
+            escalate_to_cloud=True,
+            context_payload=_build_payload(ctx, task, strip_private=True),
+            latency_target_ms=5000,
+        )
+
+    # 7. Long reasoning or oversized context → Cloud escalation (last resort)
+    if task.exceeds_local_limits or (task.task_type == TaskType.REASONING and not task.is_short):
         return RoutingDecision(
             surface=Surface.CLOUD_LLM,
             reason="Long reasoning or context exceeds local limits",
-            escalate_to_cloud=True
+            escalate_to_cloud=True,
+            context_payload=_build_payload(ctx, task, strip_private=True),
+            latency_target_ms=5000,
+        )
+
+    # 8. Default: local first (Chrome if short + browser-grounded, else Android Gemma)
+    if task.is_webpage_grounded and task.is_short:
+        return RoutingDecision(
+            surface=Surface.CHROME_BUILTIN_AI,
+            chrome_api=ChromeAPI.PROMPT,
+            reason="Default local inference: Chrome Prompt API (short, browser-grounded)",
+            context_payload=_build_payload(ctx, task),
+            latency_target_ms=500,
         )
     return RoutingDecision(
         surface=Surface.ANDROID_GEMMA_FULL,
-        reason="Default local inference"
+        reason="Default local inference: Android Gemma full",
+        context_payload=_build_payload(ctx, task),
+        latency_target_ms=2000,
     )
 
 
-def _select_chrome_api(task: Task) -> ChromeAPI:
+def _select_chrome_api(task: TaskObject) -> ChromeAPI:
     """Pick the right Chrome Built-in AI API for a transform task."""
     text = task.text.lower()
-    if any(w in text for w in ["summarize", "summary", "tldr"]):
+    if any(w in text for w in _SUMMARIZER_KEYWORDS):
         return ChromeAPI.SUMMARIZER
-    if any(w in text for w in ["classify", "label", "category", "intent"]):
-        return ChromeAPI.CLASSIFIER
-    if any(w in text for w in ["rewrite", "rephrase", "paraphrase"]):
+    if any(w in text for w in _TRANSLATOR_KEYWORDS):
+        return ChromeAPI.TRANSLATOR
+    if any(w in text for w in _LANGUAGE_DETECTOR_KEYWORDS):
+        return ChromeAPI.LANGUAGE_DETECTOR
+    if any(w in text for w in _REWRITER_KEYWORDS):
         return ChromeAPI.REWRITER
-    if any(w in text for w in ["proofread", "grammar", "correct"]):
+    if any(w in text for w in _PROOFREADER_KEYWORDS):
         return ChromeAPI.PROOFREADER
-    if any(w in text for w in ["write", "draft", "generate"]):
+    if any(w in text for w in _WRITER_KEYWORDS):
         return ChromeAPI.WRITER
-    if task.modality in ["image", "audio"]:
-        return ChromeAPI.MULTIMODAL_PROMPT
     return ChromeAPI.PROMPT
+
+
+def _build_payload(
+    ctx: PCOSContext, task: TaskObject, strip_private: bool = False
+) -> dict:
+    """Build the context payload for the chosen surface.
+
+    When *strip_private* is True (cloud escalation), PII is redacted.
+    """
+    payload: dict = {
+        "prompt_prefix": ctx.to_prompt_prefix(),
+        "task_text": task.text,
+        "modality": task.modality.value,
+    }
+    if strip_private:
+        from broker.policies.privacy import strip_pii
+        payload["prompt_prefix"] = strip_pii(payload["prompt_prefix"])
+        payload["task_text"] = strip_pii(payload["task_text"])
+        payload["stripped"] = True
+    return payload

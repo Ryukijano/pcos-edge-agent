@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "PCOS Context Router",
+  "version": "0.2.0",
+  "description": "Local-first hybrid AI runtime — routes tasks to Chrome Built-in AI, Android LiteRT-LM, or cloud with privacy-first policies.",
+  "permissions": [
+    "sidePanel",
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "storage",
+    "tabs",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "ws://localhost:8000/*"
+  ],
+  "minimum_chrome_version": "116",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "PCOS"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

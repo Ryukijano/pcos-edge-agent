@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>PCOS Offscreen</title>
+</head>
+<body>
+  <script>
+    // Offscreen document keeps the service worker alive by maintaining
+    // an active context. The actual WebSocket lives in background.js;
+    // this document prevents Chrome from hard-killing the SW at 5 min.
+    // It listens for keepalive messages and echoes them back.
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      if (msg.type === 'pcos-offscreen-ping') {
+        sendResponse({ type: 'pcos-offscreen-pong', ts: Date.now() });
+      }
+      return false;
+    });
+  </script>
+</body>
+</html>

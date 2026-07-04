@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PCOS</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="pcos-container">
+    <!-- Header -->
+    <header class="pcos-header">
+      <h1>PCOS</h1>
+      <span class="pcos-subtitle">Context Router</span>
+      <div class="pcos-status">
+        <span id="broker-status" class="status-dot status-unknown"></span>
+        <span id="broker-label">Checking broker…</span>
+      </div>
+    </header>
+
+    <!-- API availability strip -->
+    <div class="api-strip" id="api-strip">
+      <span class="api-badge" data-api="prompt">Prompt</span>
+      <span class="api-badge" data-api="summarizer">Summarizer</span>
+      <span class="api-badge" data-api="rewriter">Rewriter</span>
+      <span class="api-badge" data-api="proofreader">Proofreader</span>
+      <span class="api-badge" data-api="translator">Translator</span>
+      <span class="api-badge" data-api="language_detector">Lang Detect</span>
+      <span class="api-badge" data-api="writer">Writer</span>
+    </div>
+
+    <!-- Input area -->
+    <div class="input-area">
+      <textarea
+        id="task-input"
+        placeholder="Ask PCOS… or highlight text on any page and right-click → PCOS"
+        rows="3"
+      ></textarea>
+      <div class="input-controls">
+        <select id="task-type">
+          <option value="transform">Transform</option>
+          <option value="action">Action</option>
+          <option value="reasoning">Reasoning</option>
+          <option value="retrieval">Retrieval</option>
+        </select>
+        <label class="checkbox">
+          <input type="checkbox" id="private-mode"> Private
+        </label>
+        <button id="execute-btn" class="btn-primary">Execute</button>
+      </div>
+    </div>
+
+    <!-- Routing badge -->
+    <div class="routing-badge" id="routing-badge" style="display:none">
+      <span class="badge-surface" id="badge-surface"></span>
+      <span class="badge-model" id="badge-model"></span>
+      <span class="badge-latency" id="badge-latency"></span>
+    </div>
+
+    <!-- Output area -->
+    <div class="output-area">
+      <div id="output" class="output-content">
+        <p class="placeholder">Results appear here.</p>
+      </div>
+    </div>
+
+    <!-- Proactive suggestion chip -->
+    <div class="suggestion-chip" id="suggestion-chip" style="display:none">
+      <span id="suggestion-text"></span>
+      <button id="suggestion-accept" class="btn-chip">↑</button>
+      <button id="suggestion-dismiss" class="btn-chip">✕</button>
+    </div>
+  </div>
+
+  <script src="chrome_ai.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

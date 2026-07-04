@@ -1,3 +1,3 @@
-from .router import route, Task, RoutingDecision, Surface, ChromeAPI
+from .router import route, RoutingDecision, Surface, ChromeAPI
 
-__all__ = ["route", "Task", "RoutingDecision", "Surface", "ChromeAPI"]
+__all__ = ["route", "RoutingDecision", "Surface", "ChromeAPI"]

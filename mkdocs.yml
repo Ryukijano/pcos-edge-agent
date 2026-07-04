@@ -1,0 +1,63 @@
+site_name: PCOS — Personal Context Operating System
+site_description: A local-first hybrid AI runtime across Chrome, Android, Pixel Watch, PiecesOS, and cloud LLMs.
+site_url: https://pcos.dev
+repo_url: https://github.com/pcos/pcos
+repo_name: pcos/pcos
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.highlight
+    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Routing Spec: routing-spec.md
+  - Configuration: configuration.md
+  - API Reference: api-reference.md
+  - Android: android.md
+  - Chrome Extension: chrome-extension.md
+  - Pixel Watch: pixel-watch.md
+  - Contributing: contributing.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true

@@ -1,35 +1,52 @@
-"""PCOS Context Broker — FastAPI service entry point."""
+"""PCOS Context Broker — FastAPI service entry point.
+
+Endpoints:
+  POST /route          — route a task, get RoutingDecision
+  POST /execute        — route + plan a task, get ExecutionPlan
+  POST /context/compress — compress context into prompt prefix
+  GET  /health         — health check with latency budgets
+  GET  /metrics        — latency + local-vs-cloud hit rate metrics
+  GET  /memory         — PiecesOS memory status
+  POST /memory/query   — query PiecesOS LTM
+  WS   /bridge         — Chrome ↔ Android relay hub
+"""
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-from pydantic import BaseModel
-from broker.router.router import Task, route
-from broker.context.context_schema import PCOSContext
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="PCOS Context Broker", version="0.1.0")
+from broker.config import get_settings
+from broker.logging import get_logger, setup_logging
+from broker.routers._shared import get_db
+from broker.routers.route_router import router as route_router
+from broker.routers.ops_router import router as ops_router
+from broker.routers.bridge_router import router as bridge_router
 
-
-class RouteRequest(BaseModel):
-    task: dict
-    context: dict = {}
-
-
-@app.post("/route")
-def route_task(req: RouteRequest):
-    task = Task(**req.task)
-    decision = route(task)
-    return {
-        "surface": decision.surface,
-        "chrome_api": decision.chrome_api,
-        "reason": decision.reason,
-        "escalate_to_cloud": decision.escalate_to_cloud,
-    }
+_settings = get_settings()
+_log = get_logger("broker.main")
 
 
-@app.post("/context/compress")
-def compress_context(ctx: dict):
-    context = PCOSContext(**ctx)
-    return {"prompt_prefix": context.to_prompt_prefix()}
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_logging()
+    _log.info("broker_starting", host=_settings.broker_host, port=_settings.broker_port)
+    get_db()
+    _log.info("broker_ready")
+    yield
+    _log.info("broker_shutdown")
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok", "service": "pcos-context-broker"}
+app = FastAPI(title="PCOS Context Broker", version="0.3.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_settings.cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(route_router)
+app.include_router(ops_router)
+app.include_router(bridge_router)

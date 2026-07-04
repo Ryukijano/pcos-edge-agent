@@ -88,7 +88,7 @@ def route(task):
     if task.sensitivity == "private" or task.is_offline:
         return "android_litert_functiongemma"
     if task.is_webpage_grounded and task.is_short and task.task_type == "transform":
-        return "chrome_builtin_ai"  # Summarizer / Classifier / Rewriter etc.
+        return "chrome_builtin_ai"  # Summarizer / Translator / Rewriter etc.
     if task.requires_personal_context:
         return "piecesos_memory_then_local"
     if task.requires_action:
@@ -98,20 +98,32 @@ def route(task):
     return "local_first_default"
 ```
 
-## Chrome APIs Enabled
+## Chrome Built-in AI APIs
 
-- ✅ Prompt API (Gemma 4 backend + LiteRT-LM)
-- ✅ Multimodal Prompt API (image + audio)
-- ✅ Summarizer API (speed / capability preference)
-- ✅ Writer / Rewriter / Proofreader
-- ✅ Classifier API
-- ✅ Speculative decoding
+- ✅ Prompt API — natural language instructions to Gemma locally
+- ✅ Summarizer API — summarization with speed/capability preference
+- ✅ Writer API — long-form generation
+- ✅ Rewriter API — transformation of existing text
+- ✅ Proofreader API — grammar/clarity on a small expert model
+- ✅ Translator API — translation between languages (Chrome 138+)
+- ✅ Language Detector API — detect text language (Chrome 138+)
+
+## Android On-Device Inference
+
+- ✅ LiteRT-LM v0.13+ — production inference with Engine/Conversation API
+- ✅ FunctionGemma 270M — fast function calling with @Tool/@ToolParam annotations
+- ✅ Gemma 4 E2B — larger model for complex tasks, GPU backend
+- ✅ Model download flow — auto-download .litertlm files from HuggingFace
+- ✅ Streaming inference — Flow-based token streaming
 
 ## Quick Start
 
 ```bash
 # Install broker dependencies
 pip install -r requirements.txt
+
+# Copy env template (optional)
+cp .env.example .env
 
 # Run the Context Broker locally
 uvicorn broker.main:app --reload --port 8000
@@ -120,15 +132,24 @@ uvicorn broker.main:app --reload --port 8000
 curl -X POST http://localhost:8000/route \
   -H 'Content-Type: application/json' \
   -d '{"task": {"text": "summarize this article", "is_webpage_grounded": true, "is_short": true}}'
+
+# Run tests
+python -m pytest tests/ -q
 ```
 
-## Implementation Plan
+## Configuration
 
-See [docs/tickets.md](docs/tickets.md) for all 10 tickets.
+All config is via environment variables (prefix `PCOS_`) or a `.env` file:
 
-**This week:** Tickets 1–4 (validate Chrome stack, extension scaffold, Android app, Context Broker service)
-**MVP:** Tickets 5–7 (PiecesOS memory, on-device function calling, Chrome↔Android bridge)
-**Platform:** Tickets 8–10 (Pixel Watch, cloud escalation, observability)
+| Variable | Default | Description |
+|---|---|---|
+| `PCOS_BROKER_PORT` | 8000 | Broker listen port |
+| `PCOS_PIECESOS_PORT` | 39300 | PiecesOS MCP port |
+| `PCOS_BRIDGE_AUTH_TOKEN` | (empty) | WebSocket bridge auth token |
+| `PCOS_LOG_JSON` | true | Structured JSON logging |
+| `PCOS_LATENCY_TARGET_ROUTE_MS` | 50 | Route endpoint latency budget |
+
+See `.env.example` for the full list.
 
 ## Philosophy
 

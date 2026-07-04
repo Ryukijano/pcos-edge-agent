@@ -6,16 +6,16 @@
 
 Chrome is the **browser intelligence surface**. It knows the current URL, selected text, DOM, tab groups, and browsing session. Its Built-in AI APIs operate on that context.
 
-**Enabled APIs:**
+**Enabled APIs (Chrome 138+):**
 - `Prompt API` — natural language instructions to Gemma 4 locally
-- `Multimodal Prompt API` — adds image + audio inputs
 - `Writer API` — long-form generation
 - `Rewriter API` — transformation of existing text
 - `Proofreader API` — grammar/clarity on a small expert model
-- `Classifier API` — text classification on a small expert model
 - `Summarizer API` — summarization with speed/capability preference
-- `LiteRT-LM backend` — production-grade local inference runtime
-- `Speculative decoding` — latency optimisation for Gemma 4
+- `Translator API` — translate text between languages
+- `Language Detector API` — detect the language of input text
+
+**Note:** Chrome Built-in AI runs on the LiteRT-LM backend with speculative decoding for Gemma 4. These are browser-level features, not separate APIs.
 
 **Important constraint:** These APIs are NOT suitable for factual accuracy tasks. Use them for transform tasks (summarize, rewrite, classify, proofread), not knowledge retrieval.
 
@@ -27,7 +27,7 @@ Android is the **action brain**. It handles:
 - Larger model tasks via AI Edge Gallery (Gemma 4 etc.)
 - Camera, microphone, sensors, notifications, local tools
 
-LiteRT-LM exposes production inference primitives: Engine, Session, shared model loading, KV cache reuse, multimodal encoders, session cloning, prompt caching.
+LiteRT-LM v0.13+ exposes production inference primitives: Engine, Conversation, shared model loading, KV cache reuse, GPU/NPU backend selection, streaming responses via Flow, and annotated ToolSet function calling.
 
 ### 3. Memory Plane — PiecesOS
 

@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint with ruff
+        run: |
+          pip install ruff
+          ruff check broker/ memory/ tests/ --output-format=github
+
+      - name: Run tests
+        run: |
+          python -m pytest tests/ -q --tb=short
+
+  build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify broker imports
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -c "from broker.main import app; assert app.title == 'PCOS Context Broker'"
+          python -c "from broker.config import get_settings; s = get_settings(); assert s.broker_port > 0"
+          python -c "from broker.logging import get_logger; log = get_logger('ci'); log.info('ok', step='import')"

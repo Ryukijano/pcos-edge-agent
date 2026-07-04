@@ -1,3 +1,3 @@
-from .connector import PiecesConnector
+from .connector import PiecesConnector, MemoryItem
 
-__all__ = ["PiecesConnector"]
+__all__ = ["PiecesConnector", "MemoryItem"]
