@@ -8,6 +8,7 @@ const taskInput = document.getElementById('task-input');
 const taskTypeSelect = document.getElementById('task-type');
 const privateMode = document.getElementById('private-mode');
 const executeBtn = document.getElementById('execute-btn');
+const stopBtn = document.getElementById('stop-btn');
 const output = document.getElementById('output');
 const routingBadge = document.getElementById('routing-badge');
 const badgeSurface = document.getElementById('badge-surface');
@@ -50,22 +51,23 @@ async function checkBrokerStatus() {
 
 async function checkChromeAIAvailability() {
   const apis = [
-    { name: 'prompt', check: () => window.ai?.languageModel },
-    { name: 'summarizer', check: () => window.ai?.summarizer },
-    { name: 'rewriter', check: () => window.ai?.rewriter },
-    { name: 'proofreader', check: () => window.ai?.proofreader },
-    { name: 'translator', check: () => window.ai?.translator },
-    { name: 'language_detector', check: () => window.ai?.languageDetector },
-    { name: 'writer', check: () => window.ai?.writer },
+    { name: 'prompt', ctor: 'LanguageModel' },
+    { name: 'summarizer', ctor: 'Summarizer' },
+    { name: 'rewriter', ctor: 'Rewriter' },
+    { name: 'proofreader', ctor: 'Proofreader' },
+    { name: 'translator', ctor: 'Translator' },
+    { name: 'language_detector', ctor: 'LanguageDetector' },
+    { name: 'writer', ctor: 'Writer' },
   ];
 
   for (const api of apis) {
     const badge = apiStrip.querySelector(`[data-api="${api.name}"]`);
-    if (badge) {
-      const available = await api.check();
-      if (available) {
-        badge.classList.add('available');
-      }
+    if (!badge) continue;
+    const status = await ChromeAI.checkAvailability(api.ctor);
+    if (status === 'available') {
+      badge.classList.add('available');
+    } else if (status === 'downloadable' || status === 'downloading') {
+      badge.classList.add('downloadable');
     }
   }
 }
@@ -77,7 +79,8 @@ async function executeTask() {
   if (!text) return;
 
   executeBtn.disabled = true;
-  output.innerHTML = '<p class="placeholder">Routing…</p>';
+  stopBtn.style.display = 'inline-block';
+  output.textContent = 'Routing…';
   routingBadge.style.display = 'none';
 
   const task = {
@@ -103,6 +106,7 @@ async function executeTask() {
           await fallbackToChromeAI(task);
         }
         executeBtn.disabled = false;
+        stopBtn.style.display = 'none';
       }
     );
   });
@@ -124,11 +128,11 @@ function displayResult(result, task) {
   if (decision.surface === 'chrome_builtin_ai' && decision.chrome_api) {
     executeViaChromeAI(decision.chrome_api, plan, task);
   } else if (decision.surface === 'android_litert_functiongemma' || decision.surface === 'android_litert_gemma_full') {
-    output.innerHTML = `<p class="placeholder">Routed to Android (${decision.reason}). Use the bridge to relay.</p>`;
+    output.textContent = `Routed to Android (${decision.reason}). Use the bridge to relay.`;
   } else if (decision.surface === 'cloud_llm_escalation') {
-    output.innerHTML = `<p class="placeholder">Cloud escalation: ${decision.reason}</p>`;
+    output.textContent = `Cloud escalation: ${decision.reason}`;
   } else if (decision.surface === 'piecesos_memory_then_local') {
-    output.innerHTML = `<p class="placeholder">Querying PiecesOS memory…</p>`;
+    output.textContent = 'Querying PiecesOS memory…';
   } else {
     output.textContent = JSON.stringify(result, null, 2);
   }
@@ -137,8 +141,14 @@ function displayResult(result, task) {
 // ── Chrome Built-in AI execution ───────────────────────────────
 
 async function executeViaChromeAI(apiName, plan, task) {
+  output.textContent = '';
+  const progressEl = document.createElement('p');
+  progressEl.className = 'placeholder';
+  progressEl.textContent = 'Loading model…';
+  output.appendChild(progressEl);
+
   try {
-    const result = await ChromeAI.dispatch(
+    const result = await ChromeAI.dispatchStream(
       apiName,
       plan.user_prompt || task.text,
       {
@@ -146,11 +156,21 @@ async function executeViaChromeAI(apiName, plan, task) {
         preference: 'auto',
         tone: 'as-is',
         context: plan.context_prefix || '',
+        onProgress: (pct) => {
+          if (pct < 100) progressEl.textContent = `Downloading model: ${pct}%`;
+          else progressEl.remove();
+        },
+      },
+      (chunk) => {
+        if (progressEl.parentNode) progressEl.remove();
+        output.textContent += chunk;
       }
     );
+    if (progressEl.parentNode) progressEl.remove();
     output.textContent = result;
   } catch (e) {
-    output.innerHTML = `<p class="placeholder" style="color:var(--error)">Chrome AI error: ${e.message}</p>`;
+    progressEl.remove();
+    output.textContent = `Chrome AI error: ${e.message}`;
   }
 }
 
@@ -163,11 +183,15 @@ async function fallbackToChromeAI(task) {
   badgeModel.textContent = api;
   badgeLatency.textContent = 'local';
 
+  output.textContent = '';
   try {
-    const result = await ChromeAI.dispatch(api, task.text, { systemPrompt: '' });
+    const result = await ChromeAI.dispatchStream(
+      api, task.text, { systemPrompt: '' },
+      (chunk) => { output.textContent += chunk; }
+    );
     output.textContent = result;
   } catch (e) {
-    output.innerHTML = `<p class="placeholder" style="color:var(--error)">No Chrome AI available: ${e.message}</p>`;
+    output.textContent = `No Chrome AI available: ${e.message}`;
   }
 }
 
@@ -186,6 +210,12 @@ function guessChromeAPI(text) {
 
 function setupListeners() {
   executeBtn.addEventListener('click', executeTask);
+
+  stopBtn.addEventListener('click', () => {
+    ChromeAI.abort();
+    stopBtn.style.display = 'none';
+    executeBtn.disabled = false;
+  });
 
   taskInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {

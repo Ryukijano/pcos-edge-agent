@@ -2,20 +2,39 @@
 
 ## The Five Planes
 
-### 1. Browser Plane — Chrome Canary
+### 1. Browser Plane — Chrome 138+
 
 Chrome is the **browser intelligence surface**. It knows the current URL, selected text, DOM, tab groups, and browsing session. Its Built-in AI APIs operate on that context.
 
-**Enabled APIs (Chrome 138+):**
-- `Prompt API` — natural language instructions to Gemma 4 locally
-- `Writer API` — long-form generation
-- `Rewriter API` — transformation of existing text
-- `Proofreader API` — grammar/clarity on a small expert model
-- `Summarizer API` — summarization with speed/capability preference
-- `Translator API` — translate text between languages
-- `Language Detector API` — detect the language of input text
+**Stable APIs (Chrome 138+):**
+- `LanguageModel` (Prompt API) — natural language instructions to Gemini Nano, with `initialPrompts` for system instructions, `topK`/`temperature` params (extensions only), streaming via `promptStreaming()`
+- `Summarizer` — summarization with type/length/format options, streaming via `summarizeStreaming()`
+- `Translator` — translate text between languages (expert model)
+- `LanguageDetector` — detect the language of input text (expert model)
 
-**Note:** Chrome Built-in AI runs on the LiteRT-LM backend with speculative decoding for Gemma 4. These are browser-level features, not separate APIs.
+**Developer Trial APIs (origin trial or flags):**
+- `Writer` — long-form generation with `sharedContext`
+- `Rewriter` — transformation of existing text with tone control
+- `Proofreader` — grammar/clarity on a small expert model
+
+**API status table (as of Chrome 148):**
+
+| API | Web | Extensions | Status |
+|-----|-----|------------|--------|
+| Translator | 138 | 138 | Stable |
+| Language Detector | 138 | 138 | Stable |
+| Summarizer | 138 | 138 | Stable |
+| Prompt API | 148 | 138 | Stable (extensions) |
+| Writer | Origin trial | Origin trial | Developer trial |
+| Rewriter | Origin trial | Origin trial | Developer trial |
+| Proofreader | Developer trial | Developer trial | Developer trial |
+
+**Session management best practices:**
+- Always call `session.destroy()` when done to free device memory
+- Use `AbortController` to let users stop long-running generation
+- Monitor `session.contextUsage` / `session.contextWindow` for context overflow
+- Use `monitor(m)` in `create()` to track model download progress
+- Model output is untrusted — always use `textContent`, never `innerHTML`
 
 **Important constraint:** These APIs are NOT suitable for factual accuracy tasks. Use them for transform tasks (summarize, rewrite, classify, proofread), not knowledge retrieval.
 
