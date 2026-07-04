@@ -75,11 +75,13 @@ pcos-edge-agent/
 
 | Plane | Surface | Role |
 |---|---|---|
-| Browser | Chrome 138+ | Page-grounded NLP transforms, side panel UI |
-| Device | Android + LiteRT-LM | Private offline inference, function calling |
+| Browser | Chrome 138+ | Page-grounded NLP transforms, side panel UI, WebGPU |
+| Device (Android) | Android + LiteRT-LM | Private offline inference, function calling, NPU/GPU |
+| Device (iOS) | iOS + LiteRT-LM Swift | Private offline inference, Metal GPU, multimodal |
 | Memory | PiecesOS | Episodic LTM, MCP, workflow context |
 | Ambient | Pixel Watch 4 | Lightweight context signals, quick actions |
-| Cloud | Gemini / OpenAI | Overflow reasoning, long context only |
+| Desktop | lit serve | Local desktop GPU fallback (Gemini-compatible API) |
+| Cloud | Gemini / OpenAI | Overflow reasoning, long context only (last resort) |
 
 ## On-Device Models (LiteRT-LM)
 
@@ -91,7 +93,28 @@ pcos-edge-agent/
 | Gemma 4 E2B Mobile (QAT) | 1.1GB | GPU | ~3500 | ~48 | Low-RAM devices, text-only |
 | Gemma 4 E4B Mobile (QAT) | 2.5GB | GPU | ~1200 | ~20 | Low-RAM reasoning + multimodal |
 
-*Benchmarks from Samsung S26 Ultra. Adreno 730 (OnePlus 11R) uses OpenCL GPU backend with similar decode throughput. MTP/speculative decoding enabled for E2B/E4B. Apple Metal supported via LiteRT-LM Swift APIs. NPU (Qualcomm QNN) supported on Snapdragon 8 Gen 2+ with auto-fallback to GPU/CPU. QAT mobile models use Google's wNa8o8 quantization schema with targeted 2-bit decoding layers and optimized KV caches.*
+*Benchmarks from Samsung S26 Ultra and iPhone 17 Pro (Google official). Adreno 730 (OnePlus 11R) uses OpenCL GPU backend. MTP/speculative decoding enabled for E2B/E4B. Apple Metal supported via LiteRT-LM Swift APIs. NPU (Qualcomm QNN) supported on Snapdragon 8 Gen 2+ with auto-fallback to GPU/CPU. QAT mobile models use Google's wNa8o8 quantization schema with targeted 2-bit decoding layers and optimized KV caches.*
+
+### iOS / Apple Silicon Benchmarks
+
+| Model | Device | CPU Prefill (tk/s) | CPU Decode (tk/s) | GPU Prefill (tk/s) | GPU Decode (tk/s) |
+|---|---|---|---|---|---|
+| Gemma 4 E2B | iPhone 17 Pro | 532 | 25 | 2878 | 57 |
+| Gemma 4 E4B | iPhone 17 Pro | 159 | 10 | 1189 | 25 |
+| Gemma 4 E2B | MacBook Pro M4 | 901 | 42 | 7835 | 160 |
+| Gemma 4 E4B | MacBook Pro M4 | 277 | 27 | 2560 | 101 |
+
+### RAM-Based Model Auto-Selection
+
+The Android and iOS apps automatically detect device RAM and select the best model:
+
+| RAM | Tier | Default Model | Reasoning Model | Action Model |
+|---|---|---|---|---|
+| < 6GB | Low-End | E2B Mobile (1.1GB) | E2B Mobile | FunctionGemma |
+| 6-8GB | Mid-Range | E2B (2.6GB) | E4B Mobile (2.5GB) | FunctionGemma |
+| 8+GB | High-End | E2B (2.6GB) | E4B (3.7GB) | FunctionGemma |
+
+OEM RAM expansion detection (Realme, Xiaomi, OPPO, OnePlus) caps reported RAM to avoid overestimating available memory.
 
 ### QAT Mobile Quantization
 
@@ -185,6 +208,18 @@ The Android app displays real-time performance metrics after each inference:
 - **Total latency** (ms) — wall-clock time for the inference
 
 Tokens are estimated at ~4 chars/token for English text. The dashboard updates after every execution.
+
+### LoRA Adapter Infrastructure
+
+Task-specific LoRA (Low-Rank Adaptation) adapters can be loaded on top of the base model for specialized domains without doubling memory footprint:
+
+| Adapter | Task | Rank | Size |
+|---|---|---|---|
+| `gemma4-code-lora` | Code generation | 16 | ~50MB |
+| `gemma4-medical-lora` | Medical Q&A | 16 | ~50MB |
+| `gemma4-creative-lora` | Creative writing | 32 | ~80MB |
+
+Adapters share the base model's KV cache and weights — only the small adapter weights are swapped. This enables domain-specific fine-tuning without loading separate full models.
 
 ## Chrome Built-in AI APIs (Chrome 138+)
 

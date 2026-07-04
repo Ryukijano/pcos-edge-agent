@@ -21,6 +21,8 @@ class Surface(str, Enum):
     ANDROID_FUNCTION_GEMMA = "android_litert_functiongemma"
     ANDROID_GEMMA_E2B = "android_litert_gemma_e2b"
     ANDROID_GEMMA_E4B = "android_litert_gemma_e4b"
+    IOS_GEMMA_E2B = "ios_litert_gemma_e2b"
+    IOS_GEMMA_E4B = "ios_litert_gemma_e4b"
     LITERT_SERVER = "litert_server"
     PIECESOS_MEMORY = "piecesos_memory_then_local"
     CLOUD_LLM = "cloud_llm_escalation"
@@ -71,24 +73,30 @@ def route(task: TaskObject, context: Optional[PCOSContext] = None) -> RoutingDec
     """
     ctx = context or PCOSContext()
     is_offline = ctx.is_offline()
+    is_ios = bool(ctx.ios.device_model or ctx.ios.chip)
 
-    # 1. Private or offline tasks → Android LiteRT-LM (never leaves device)
+    # 1. Private or offline tasks → on-device (never leaves device)
+    #    iOS: route to iOS LiteRT-LM (Metal GPU). Android: route to Android LiteRT-LM.
     #    Use E4B for reasoning, E2B for transforms (faster, less memory)
     if task.is_private() or is_offline:
-        model = Surface.ANDROID_GEMMA_E4B if task.task_type == TaskType.REASONING else Surface.ANDROID_GEMMA_E2B
+        if is_ios:
+            model = Surface.IOS_GEMMA_E4B if task.task_type == TaskType.REASONING else Surface.IOS_GEMMA_E2B
+        else:
+            model = Surface.ANDROID_GEMMA_E4B if task.task_type == TaskType.REASONING else Surface.ANDROID_GEMMA_E2B
         return RoutingDecision(
             surface=model,
             reason=f"Private/offline task: stays on device ({model.value})",
             context_payload=_build_payload(ctx, task),
-            latency_target_ms=300 if model == Surface.ANDROID_GEMMA_E2B else 1000,
+            latency_target_ms=300 if model.value.endswith("e2b") else 1000,
         )
 
-    # 2. Multimodal non-web tasks → Android (Chrome can't do image/audio locally)
+    # 2. Multimodal non-web tasks → on-device (Chrome can't do image/audio locally)
     #    E4B has multimodal capabilities, E2B is text-only
     if task.modality in (Modality.IMAGE, Modality.AUDIO) and not task.is_webpage_grounded:
+        surface = Surface.IOS_GEMMA_E4B if is_ios else Surface.ANDROID_GEMMA_E4B
         return RoutingDecision(
-            surface=Surface.ANDROID_GEMMA_E4B,
-            reason="Multimodal task without browser grounding: Android Gemma 4 E4B handles locally",
+            surface=surface,
+            reason=f"Multimodal task without browser grounding: {surface.value} handles locally",
             context_payload=_build_payload(ctx, task),
             latency_target_ms=1000,
         )

@@ -48,6 +48,17 @@ _SYSTEM_PROMPTS = {
         "You can handle complex reasoning and multimodal inputs. "
         "If context is insufficient, say so rather than guessing."
     ),
+    Surface.IOS_GEMMA_E2B: (
+        "You are a helpful on-device assistant running on iOS via LiteRT-LM with Metal GPU. "
+        "Answer concisely using the provided context. "
+        "If context is insufficient, say so rather than guessing."
+    ),
+    Surface.IOS_GEMMA_E4B: (
+        "You are a helpful on-device assistant running on iOS via LiteRT-LM with Metal GPU. "
+        "You can process text, images, and audio. "
+        "Answer concisely using the provided context. "
+        "If context is insufficient, say so rather than guessing."
+    ),
     Surface.PIECESOS_MEMORY: (
         "Use the retrieved memories to answer. Cite which memory item was used. "
         "If no relevant memory exists, say so."

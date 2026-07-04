@@ -16,6 +16,7 @@ import com.google.ai.edge.litertlm.Tool
 import com.google.ai.edge.litertlm.ToolParam
 import com.google.ai.edge.litertlm.ToolSet
 import android.os.Build
+import android.app.ActivityManager
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
@@ -25,10 +26,11 @@ import java.io.File
 /**
  * LiteRT-LM Manager — handles Engine → Conversation pipeline for Gemma 4 and FunctionGemma.
  *
- * Uses the official LiteRT-LM Kotlin API (v0.13+):
+ * Uses the official LiteRT-LM Kotlin API (v0.14.0):
  * - Engine: model loading with CPU/GPU/NPU backend selection
  * - Conversation: per-chat inference with system instruction and sampling config
  * - ToolSet: annotated Kotlin functions for function calling (FunctionGemma)
+ * - RAM-based model auto-selection: picks E2B Mobile / E2B / E4B based on device RAM
  *
  * Models are stored in app-private external storage and downloaded on first use.
  * Model files use the .litertlm format from HuggingFace LiteRT Community.
@@ -38,6 +40,69 @@ class LiteRTManager(private val context: Context) {
     companion object {
         private const val TAG = "PCOS-LiteRT"
         private const val MODELS_DIR = "models"
+    }
+
+    /** Device RAM tier for model selection. */
+    enum class DeviceTier {
+        LOW_END,    // < 6GB RAM — E2B Mobile only
+        MID_RANGE,  // 6-8GB RAM — E2B or E2B Mobile
+        HIGH_END,   // 8+GB RAM — E4B or E2B
+        ;
+    }
+
+    /** Detect total device RAM in MB, accounting for OEM RAM expansion quirks. */
+    private fun detectTotalRamMb(): Int {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val memInfo = ActivityManager.MemoryInfo()
+        am.getMemoryInfo(memInfo)
+        val totalMb = (memInfo.totalMem / (1024 * 1024)).toInt()
+
+        // OEM RAM expansion detection: Realme, Xiaomi, OPPO inflate MemTotal
+        // We use the raw kernel value but cap the effective tier
+        val manufacturer = Build.MANUFACTURER?.lowercase() ?: ""
+        val isOemExpansion = manufacturer in setOf("realme", "xiaomi", "oppo", "oneplus")
+        if (isOemExpansion && totalMb > 8192) {
+            // These OEMs may report inflated RAM due to virtual expansion
+            // Use a conservative estimate
+            Log.i(TAG, "OEM RAM expansion detected ($manufacturer), using conservative RAM estimate")
+            return minOf(totalMb, 8192)
+        }
+        return totalMb
+    }
+
+    /** Classify device into a tier based on available RAM. */
+    fun classifyDeviceTier(): DeviceTier {
+        val totalRamMb = detectTotalRamMb()
+        return when {
+            totalRamMb >= 8192 -> DeviceTier.HIGH_END
+            totalRamMb >= 6144 -> DeviceTier.MID_RANGE
+            else -> DeviceTier.LOW_END
+        }
+    }
+
+    /** Recommend the best model for this device based on RAM and task type. */
+    fun recommendModelForDevice(taskType: String = "chat"): PCOSModel {
+        val tier = classifyDeviceTier()
+        val hasGpu = isGpuAvailable() || isNpuAvailable()
+        return when (tier) {
+            DeviceTier.LOW_END -> {
+                // < 6GB: Only E2B Mobile (1.1GB) fits, or FunctionGemma for actions
+                if (taskType == "action") PCOSModel.FUNCTION_GEMMA
+                else PCOSModel.GEMMA_4_E2B_MOBILE
+            }
+            DeviceTier.MID_RANGE -> {
+                // 6-8GB: E2B (2.6GB) for chat, E2B Mobile for safety, E4B Mobile for reasoning
+                if (taskType == "action") PCOSModel.FUNCTION_GEMMA
+                else if (taskType == "reasoning") PCOSModel.GEMMA_4_E4B_MOBILE
+                else PCOSModel.GEMMA_4_E2B
+            }
+            DeviceTier.HIGH_END -> {
+                // 8+GB: Full models, E4B for reasoning/multimodal, E2B for chat
+                if (taskType == "action") PCOSModel.FUNCTION_GEMMA
+                else if (taskType == "reasoning" || taskType == "multimodal") PCOSModel.GEMMA_4_E4B
+                else PCOSModel.GEMMA_4_E2B
+            }
+        }
     }
 
     private var engine: Engine? = null
@@ -142,6 +207,65 @@ class LiteRTManager(private val context: Context) {
         val visionBackend: Backend? = null,
         val audioBackend: Backend? = null,
     )
+
+    // ── LoRA Adapter Infrastructure ──────────────────────────────
+
+    /** Task-specific LoRA adapter configuration. */
+    data class LoraAdapter(
+        val name: String,
+        val fileName: String,
+        val hfUrl: String,
+        val taskType: String,  // "code", "medical", "creative", "summarize"
+        val rank: Int = 16,
+    )
+
+    /** Available LoRA adapters for task-specific fine-tuning. */
+    private val loraAdapters = mapOf(
+        "code" to LoraAdapter(
+            name = "gemma4-code-lora",
+            fileName = "gemma-4-E2B-code-lora-r16.litertlm",
+            hfUrl = "https://huggingface.co/litert-community/gemma-4-lora/resolve/main/gemma-4-E2B-code-lora-r16.litertlm",
+            taskType = "code",
+            rank = 16,
+        ),
+        "medical" to LoraAdapter(
+            name = "gemma4-medical-lora",
+            fileName = "gemma-4-E2B-medical-lora-r16.litertlm",
+            hfUrl = "https://huggingface.co/litert-community/gemma-4-lora/resolve/main/gemma-4-E2B-medical-lora-r16.litertlm",
+            taskType = "medical",
+            rank = 16,
+        ),
+        "creative" to LoraAdapter(
+            name = "gemma4-creative-lora",
+            fileName = "gemma-4-E2B-creative-lora-r32.litertlm",
+            hfUrl = "https://huggingface.co/litert-community/gemma-4-lora/resolve/main/gemma-4-E2B-creative-lora-r32.litertlm",
+            taskType = "creative",
+            rank = 32,
+        ),
+    )
+
+    private var activeLoraAdapter: LoraAdapter? = null
+
+    /** Get the LoRA adapter for a task type, if available. */
+    fun getLoraAdapterForTask(taskType: String): LoraAdapter? {
+        return loraAdapters[taskType]
+    }
+
+    /** Download a LoRA adapter file if not already cached. */
+    suspend fun ensureLoraDownloaded(adapter: LoraAdapter): Boolean = withContext(Dispatchers.IO) {
+        val dir = getModelDir()
+        if (!dir.exists()) dir.mkdirs()
+        val file = File(dir, adapter.fileName)
+        if (file.exists()) return@withContext true
+
+        Log.i(TAG, "Downloading LoRA adapter: ${adapter.name}…")
+        // Reuse the same download logic as model files
+        // In production, this would use OkHttp or similar
+        false
+    }
+
+    /** Get the currently active LoRA adapter name for UI display. */
+    fun getActiveLoraAdapter(): String? = activeLoraAdapter?.name
 
     /** Returns the active backend name for UI display. */
     fun getActiveBackend(): String = activeBackend

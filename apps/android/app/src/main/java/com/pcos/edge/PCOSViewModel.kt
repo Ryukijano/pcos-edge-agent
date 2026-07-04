@@ -130,17 +130,20 @@ class PCOSViewModel : AndroidViewModel(Application()) {
     }
 
     /**
-     * Warm-load the default model (E2B) on app startup for instant first response.
-     * Falls back to FunctionGemma if E2B download fails.
+     * Warm-load the best model for this device on app startup for instant first response.
+     * Uses RAM-based auto-selection: E2B Mobile on low-RAM, E2B on mid, E4B on high.
+     * Falls back to FunctionGemma if the recommended model download fails.
      */
     private fun warmLoadDefaultModel() {
         viewModelScope.launch {
+            val recommended = litertManager.recommendModelForDevice("chat")
+            val tier = litertManager.classifyDeviceTier()
             _uiState.value = _uiState.value.copy(
-                selectedModel = PCOSModel.GEMMA_4_E2B,
+                selectedModel = recommended,
                 modelDownloading = true,
-                downloadProgress = "Warm-loading Gemma 4 E2B…",
+                downloadProgress = "Warm-loading ${recommended.displayName()} (tier: $tier)…",
             )
-            val loaded = litertManager.warmLoad(PCOSModel.GEMMA_4_E2B)
+            val loaded = litertManager.warmLoad(recommended)
             if (loaded) {
                 _uiState.value = _uiState.value.copy(
                     modelLoaded = true,

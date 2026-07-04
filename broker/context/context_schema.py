@@ -94,6 +94,16 @@ class DesktopContext(BaseModel):
     os_type: str = ""  # linux | macos | windows
 
 
+class IOSContext(BaseModel):
+    """iOS device context — Apple chip, Metal GPU, RAM tier."""
+    device_model: str = ""  # e.g. "iPhone 17 Pro"
+    chip: str = ""  # e.g. "A19 Pro"
+    total_ram_mb: int = 0
+    has_metal: bool = True  # All modern Apple devices have Metal
+    is_ipad: bool = False
+    ios_version: str = ""
+
+
 class PCOSContext(BaseModel):
     """Full context object assembled before routing."""
     browser: BrowserContext = Field(default_factory=BrowserContext)
@@ -103,6 +113,7 @@ class PCOSContext(BaseModel):
     calendar: CalendarContext = Field(default_factory=CalendarContext)
     files: FileContext = Field(default_factory=FileContext)
     desktop: DesktopContext = Field(default_factory=DesktopContext)
+    ios: IOSContext = Field(default_factory=IOSContext)
 
     def to_prompt_prefix(self, max_chars: int = 1200) -> str:
         """Compress context into a prompt prefix for local models.
