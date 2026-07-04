@@ -3,10 +3,13 @@ package com.pcos.edge
 import android.content.Context
 import android.util.Log
 import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.ExperimentalApi
+import com.google.ai.edge.litertlm.ExperimentalFlags
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.SamplerConfig
 import com.google.ai.edge.litertlm.Tool
@@ -41,16 +44,18 @@ class LiteRTManager(private val context: Context) {
 
     private val modelConfigs = mapOf(
         PCOSModel.FUNCTION_GEMMA to ModelConfig(
-            fileName = "functiongemma_270m_it.litertlm",
-            hfUrl = "https://huggingface.co/litert-community/functiongemma-270m-it/resolve/main/functiongemma-270m-it.litertlm",
+            fileName = "functiongemma-270m-ft-mobile-actions.litertlm",
+            hfUrl = "https://huggingface.co/litert-community/functiongemma-270m-ft-mobile-actions/resolve/main/functiongemma-270m-ft-mobile-actions.litertlm",
             backend = Backend.CPU(),
-            systemInstruction = "You are a helpful on-device assistant. Use tools when appropriate.",
+            systemInstruction = Contents.of("You are a helpful on-device assistant. Use tools when appropriate."),
+            enableMtp = false,
         ),
         PCOSModel.GEMMA_FULL to ModelConfig(
-            fileName = "gemma_4_e2b_it.litertlm",
-            hfUrl = "https://huggingface.co/litert-community/gemma-4-e2b-it/resolve/main/gemma-4-e2b-it.litertlm",
+            fileName = "gemma-4-E2B-it.litertlm",
+            hfUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm",
             backend = Backend.GPU(),
-            systemInstruction = "You are a helpful on-device assistant.",
+            systemInstruction = Contents.of("You are a helpful on-device assistant."),
+            enableMtp = true,
         ),
     )
 
@@ -58,7 +63,8 @@ class LiteRTManager(private val context: Context) {
         val fileName: String,
         val hfUrl: String,
         val backend: Backend,
-        val systemInstruction: String,
+        val systemInstruction: Contents,
+        val enableMtp: Boolean,
     )
 
     private fun getModelDir(): File {
@@ -110,11 +116,11 @@ class LiteRTManager(private val context: Context) {
         }
     }
 
+    @OptIn(ExperimentalApi::class)
     suspend fun loadModel(model: PCOSModel): Boolean = withContext(Dispatchers.IO) {
         if (currentModel == model && engine != null) return@withContext true
 
         try {
-            // Close existing conversation/engine
             conversation?.close()
             engine?.close()
 
@@ -126,13 +132,19 @@ class LiteRTManager(private val context: Context) {
             }
 
             val config = modelConfigs[model]!!
+
+            if (config.enableMtp) {
+                ExperimentalFlags.enableSpeculativeDecoding = true
+                Log.i(TAG, "MTP/speculative decoding enabled for GPU")
+            }
+
             val engineConfig = EngineConfig(
                 modelPath = file.absolutePath,
                 backend = config.backend,
                 cacheDir = context.cacheDir.path,
             )
 
-            Log.i(TAG, "Initializing engine for ${config.fileName}…")
+            Log.i(TAG, "Initializing engine for ${config.fileName} on ${config.backend}…")
             engine = Engine(engineConfig)
             engine!!.initialize()
 
@@ -161,9 +173,10 @@ class LiteRTManager(private val context: Context) {
             )
             eng.createConversation(convConfig).use { conv ->
                 val response = conv.sendMessage(prompt)
-                response.toString()
+                response.text
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Inference failed", e)
             "[Error: ${e.message}]"
         }
     }
@@ -190,6 +203,7 @@ class LiteRTManager(private val context: Context) {
             }
             result.toString()
         } catch (e: Exception) {
+            Log.e(TAG, "Streaming inference failed", e)
             "[Error: ${e.message}]"
         }
     }
@@ -205,16 +219,18 @@ class LiteRTManager(private val context: Context) {
         }
 
         try {
+            val config = modelConfigs[currentModel]!!
             val convConfig = ConversationConfig(
-                systemInstruction = "You are a helpful on-device assistant. Use tools when appropriate.",
+                systemInstruction = config.systemInstruction,
                 tools = tools.map { tool(it) },
                 samplerConfig = SamplerConfig(topK = 10, topP = 0.95, temperature = 0.8),
             )
             eng.createConversation(convConfig).use { conv ->
                 val response = conv.sendMessage(prompt)
-                response.toString()
+                response.text
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Tool inference failed", e)
             "[Error: ${e.message}]"
         }
     }

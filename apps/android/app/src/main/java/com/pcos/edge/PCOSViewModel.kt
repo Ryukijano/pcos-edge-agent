@@ -19,6 +19,8 @@ data class PCOSUiState(
     val selectedModel: PCOSModel = PCOSModel.FUNCTION_GEMMA,
     val inputText: String = "",
     val outputLines: List<String> = emptyList(),
+    val isExecuting: Boolean = false,
+    val streamingText: String = "",
 )
 
 class PCOSViewModel : AndroidViewModel(Application()) {
@@ -85,11 +87,12 @@ class PCOSViewModel : AndroidViewModel(Application()) {
     fun execute() {
         val input = _uiState.value.inputText.trim()
         if (input.isBlank()) return
+        if (_uiState.value.isExecuting) return
 
         viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isExecuting = true, streamingText = "")
             addOutput("→ $input")
 
-            // Route via broker
             val routing = bridgeClient.routeViaBroker(input, _uiState.value.selectedModel)
 
             if (routing != null) {
@@ -98,14 +101,17 @@ class PCOSViewModel : AndroidViewModel(Application()) {
                 addOutput("  Routed to: $surface")
 
                 if (surface == "android_litert_functiongemma" || surface == "android_litert_gemma_full") {
-                    // Execute locally via LiteRT-LM
                     val plan = routing.optJSONObject("plan")
                     val tools = plan?.optJSONArray("tools")
                     val result = if (tools != null && tools.length() > 0 && surface == "android_litert_functiongemma") {
                         addOutput("  Tools available: ${tools.length()}")
                         litertManager.inferWithTools(input, listOf(PCOSToolSet(getApplication())))
                     } else {
-                        litertManager.infer(input)
+                        litertManager.inferStreaming(input) { chunk ->
+                            _uiState.value = _uiState.value.copy(
+                                streamingText = _uiState.value.streamingText + chunk
+                            )
+                        }
                     }
                     addOutput("  Result: $result")
                     syncToWatch(activityState = "executing", lastResult = result)
@@ -117,12 +123,17 @@ class PCOSViewModel : AndroidViewModel(Application()) {
                     syncToWatch(activityState = "cloud")
                 }
             } else {
-                // Broker offline — run locally
                 addOutput("  Broker offline, running locally…")
-                val result = litertManager.infer(input)
+                val result = litertManager.inferStreaming(input) { chunk ->
+                    _uiState.value = _uiState.value.copy(
+                        streamingText = _uiState.value.streamingText + chunk
+                    )
+                }
                 addOutput("  Result: $result")
                 syncToWatch(brokerStatus = "offline", activityState = "local", lastResult = result)
             }
+
+            _uiState.value = _uiState.value.copy(isExecuting = false, streamingText = "")
         }
     }
 

@@ -22,12 +22,21 @@ Chrome is the **browser intelligence surface**. It knows the current URL, select
 ### 2. Device Plane — Android + LiteRT-LM
 
 Android is the **action brain**. It handles:
-- Offline private inference via LiteRT-LM
-- On-device function calling via FunctionGemma (270M, fast)
-- Larger model tasks via AI Edge Gallery (Gemma 4 etc.)
+- Offline private inference via LiteRT-LM v0.13.1
+- On-device function calling via FunctionGemma 270M (Mobile Actions fine-tune, CPU backend)
+- Larger model tasks via Gemma 4 E2B (GPU backend with MTP/speculative decoding)
+- Streaming inference via Kotlin Flow for real-time token output
 - Camera, microphone, sensors, notifications, local tools
 
 LiteRT-LM v0.13+ exposes production inference primitives: Engine, Conversation, shared model loading, KV cache reuse, GPU/NPU backend selection, streaming responses via Flow, and annotated ToolSet function calling.
+
+**Models:**
+| Model | Size | Backend | MTP | Purpose |
+|-------|------|---------|-----|---------|
+| FunctionGemma 270M (Mobile Actions) | 289 MB | CPU | No | Function calling, tool use |
+| Gemma 4 E2B IT | 2.59 GB | GPU | Yes | General inference, streaming |
+
+**GPU Acceleration:** Requires OpenCL native libraries (`libOpenCL.so`, `libOpenCL-car.so`, `libOpenCL-pixel.so`) declared in AndroidManifest. MTP (Multi-Token Prediction) via speculative decoding is universally recommended for GPU backends — significantly accelerates decode speeds.
 
 ### 3. Memory Plane — PiecesOS
 
