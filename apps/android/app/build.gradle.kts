@@ -42,8 +42,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.1")
 
-    // LiteRT-LM (Google AI Edge) — v0.13+ with Gemma 4 + Tool Use support
-    implementation("com.google.ai.edge.litertlm:litertlm-android:0.13.1")
+    // LiteRT-LM (Google AI Edge) — v0.14.0 with Gemma 4, MTP, Tool Use, response channel config
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.14.0")
 
     // WebSocket bridge
     implementation("org.java-websocket:Java-WebSocket:1.5.6")

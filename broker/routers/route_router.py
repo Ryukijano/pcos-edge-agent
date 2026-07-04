@@ -182,3 +182,30 @@ async def execute_task(req: ExecuteRequest):
 async def compress_context(ctx: dict):
     context = PCOSContext(**ctx)
     return {"prompt_prefix": context.to_prompt_prefix()}
+
+
+@router.post("/litert_server/infer")
+async def litert_server_infer(prompt: str, system_prompt: str = ""):
+    """Proxy inference to a local LiteRT-LM server (lit serve).
+
+    The lit CLI starts a Gemini-compatible API server on port 9379 by default.
+    This endpoint forwards prompts to that server, keeping all data local.
+    """
+    import httpx
+    server_url = _settings.litert_server_url if hasattr(_settings, 'litert_server_url') else "http://localhost:9379"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{server_url}/v1beta/models/gemma:generateContent",
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "systemInstruction": {"parts": [{"text": system_prompt}]} if system_prompt else None,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            return {"result": text, "surface": "litert_server", "local": True}
+    except Exception as e:
+        _log.warning("litert_server_unavailable", error=str(e))
+        return {"result": f"[LiteRT server unavailable: {e}]", "surface": "litert_server", "local": False}

@@ -28,6 +28,11 @@ _SYSTEM_PROMPTS = {
         "Answer concisely using the provided context. "
         "You can handle reasoning and longer inputs than the built-in AI APIs."
     ),
+    Surface.LITERT_SERVER: (
+        "You are a powerful on-device assistant running on a local LiteRT-LM server. "
+        "You have more compute and memory than mobile devices. "
+        "Provide thorough, well-structured answers."
+    ),
     Surface.ANDROID_FUNCTION_GEMMA: (
         "You are an on-device assistant. Use the provided tools when action is needed. "
         "Keep responses concise. Never reveal private data externally."

@@ -158,9 +158,33 @@ def route(task):
     if task.requires_action:
         return "android_litert_functiongemma"
     if task.exceeds_local_limits:
+        if desktop.litert_server_available:
+            return "litert_server"  # local desktop GPU via lit serve
         return "cloud_llm_escalation"
     return "android_litert_gemma_e2b"  # default local
 ```
+
+### LiteRT-LM Server (`lit serve`)
+
+The LiteRT-LM CLI includes a `serve` command that starts a **Gemini-compatible local HTTP server**:
+
+```bash
+lit serve --port 9379
+```
+
+When a desktop with `lit serve` running is detected in the context, the broker routes long reasoning tasks to it instead of cloud — keeping all data local while leveraging desktop GPU power.
+
+The broker proxies requests via `POST /litert_server/infer` to the local server's Gemini-compatible API.
+
+### Benchmark Dashboard
+
+The Android app displays real-time performance metrics after each inference:
+
+- **Prefill throughput** (tokens/sec) — input processing speed
+- **Decode throughput** (tokens/sec) — output generation speed  
+- **Total latency** (ms) — wall-clock time for the inference
+
+Tokens are estimated at ~4 chars/token for English text. The dashboard updates after every execution.
 
 ## Chrome Built-in AI APIs (Chrome 138+)
 

@@ -29,6 +29,7 @@ _settings = get_settings()
 SURFACE_DESCRIPTIONS = {
     "chrome_builtin_ai": "Chrome Built-in AI — runs in browser via LanguageModel/Summarizer/Translator, zero network latency",
     "chrome_webgpu": "Chrome WebGPU — Gemma 4 E2B/E4B runs in browser via LiteRT-LM JS API with WebGPU acceleration",
+    "litert_server": "LiteRT-LM Server — local desktop GPU via lit serve (Gemini-compatible API, no cloud)",
     "android_litert_functiongemma": "Android FunctionGemma 270M — on-device function calling, CPU backend",
     "android_litert_gemma_e2b": "Android Gemma 4 E2B (2.3B) — on-device inference, GPU backend with MTP, 2.6GB RAM",
     "android_litert_gemma_e4b": "Android Gemma 4 E4B (4.5B) — on-device full inference, GPU backend with MTP, multimodal, 3.7GB RAM",

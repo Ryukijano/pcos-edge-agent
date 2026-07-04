@@ -85,6 +85,15 @@ class FileContext(BaseModel):
     git_status: str = ""
 
 
+class DesktopContext(BaseModel):
+    """Desktop environment context — local LiteRT-LM server, GPU availability."""
+    litert_server_available: bool = False
+    litert_server_url: str = "http://localhost:9379"
+    has_gpu: bool = False
+    gpu_name: str = ""
+    os_type: str = ""  # linux | macos | windows
+
+
 class PCOSContext(BaseModel):
     """Full context object assembled before routing."""
     browser: BrowserContext = Field(default_factory=BrowserContext)
@@ -93,6 +102,7 @@ class PCOSContext(BaseModel):
     memory: MemoryContext = Field(default_factory=MemoryContext)
     calendar: CalendarContext = Field(default_factory=CalendarContext)
     files: FileContext = Field(default_factory=FileContext)
+    desktop: DesktopContext = Field(default_factory=DesktopContext)
 
     def to_prompt_prefix(self, max_chars: int = 1200) -> str:
         """Compress context into a prompt prefix for local models.

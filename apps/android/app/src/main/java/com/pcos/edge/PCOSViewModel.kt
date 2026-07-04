@@ -56,6 +56,10 @@ data class PCOSUiState(
     val outputLines: List<String> = emptyList(),
     val isExecuting: Boolean = false,
     val streamingText: String = "",
+    val prefillTokensPerSec: Float = 0f,
+    val decodeTokensPerSec: Float = 0f,
+    val timeToFirstTokenMs: Long = 0L,
+    val lastInferenceMs: Long = 0L,
 )
 
 class PCOSViewModel : AndroidViewModel(Application()) {
@@ -269,6 +273,7 @@ class PCOSViewModel : AndroidViewModel(Application()) {
                     maybeSwitchModel(surface)
                     val plan = routing.optJSONObject("plan")
                     val tools = plan?.optJSONArray("tools")
+                    val inferStart = System.nanoTime()
                     val result = if (tools != null && tools.length() > 0 && surface == "android_litert_functiongemma") {
                         addOutput("  Tools available: ${tools.length()}")
                         litertManager.inferWithTools(input, listOf(PCOSToolSet(getApplication())))
@@ -280,7 +285,19 @@ class PCOSViewModel : AndroidViewModel(Application()) {
                             )
                         }
                     }
+                    val inferElapsedMs = (System.nanoTime() - inferStart) / 1_000_000
+                    // Estimate tokens: ~4 chars per token for English text
+                    val outputTokens = maxOf(1, result.length / 4)
+                    val decodeTkSec = if (inferElapsedMs > 0) (outputTokens.toFloat() / inferElapsedMs * 1000) else 0f
+                    val inputTokens = maxOf(1, input.length / 4)
+                    val prefillTkSec = if (inferElapsedMs > 0) (inputTokens.toFloat() / (inferElapsedMs / 1000f)) else 0f
+                    _uiState.value = _uiState.value.copy(
+                        prefillTokensPerSec = prefillTkSec,
+                        decodeTokensPerSec = decodeTkSec,
+                        lastInferenceMs = inferElapsedMs,
+                    )
                     addOutput("  Result: $result")
+                    addOutput("  ⚡ ${String.format("%.0f", prefillTkSec)} tk/s prefill, ${String.format("%.1f", decodeTkSec)} tk/s decode, ${inferElapsedMs}ms")
                     syncToWatch(activityState = "executing", lastResult = result)
                 } else if (surface == "chrome_builtin_ai") {
                     addOutput("  (Chrome should handle this locally)")

@@ -21,6 +21,7 @@ class Surface(str, Enum):
     ANDROID_FUNCTION_GEMMA = "android_litert_functiongemma"
     ANDROID_GEMMA_E2B = "android_litert_gemma_e2b"
     ANDROID_GEMMA_E4B = "android_litert_gemma_e4b"
+    LITERT_SERVER = "litert_server"
     PIECESOS_MEMORY = "piecesos_memory_then_local"
     CLOUD_LLM = "cloud_llm_escalation"
 
@@ -143,11 +144,19 @@ def route(task: TaskObject, context: Optional[PCOSContext] = None) -> RoutingDec
             latency_target_ms=5000,
         )
 
-    # 7. Long reasoning or oversized context → Cloud escalation (last resort)
+    # 7. Long reasoning or oversized context → Local LiteRT server (lit serve) if available
+    #    This runs Gemma 4 12B/31B on desktop with GPU, avoiding cloud entirely
     if task.exceeds_local_limits or (task.task_type == TaskType.REASONING and not task.is_short):
+        if ctx and ctx.desktop and ctx.desktop.litert_server_available:
+            return RoutingDecision(
+                surface=Surface.LITERT_SERVER,
+                reason="Long reasoning: local LiteRT-LM server (lit serve) with desktop GPU",
+                context_payload=_build_payload(ctx, task, strip_private=task.sensitivity == Sensitivity.PRIVATE),
+                latency_target_ms=2000,
+            )
         return RoutingDecision(
             surface=Surface.CLOUD_LLM,
-            reason="Long reasoning or context exceeds local limits",
+            reason="Long reasoning or context exceeds local limits (no local server available)",
             escalate_to_cloud=True,
             context_payload=_build_payload(ctx, task, strip_private=True),
             latency_target_ms=5000,

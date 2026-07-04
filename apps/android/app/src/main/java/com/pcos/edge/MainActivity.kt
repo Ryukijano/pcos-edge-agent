@@ -52,6 +52,27 @@ fun PCOSApp(viewModel: PCOSViewModel = viewModel()) {
             )
         }
 
+        // Benchmark dashboard
+        if (uiState.lastInferenceMs > 0) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "⚡ ${String.format("%.0f", uiState.prefillTokensPerSec)} tk/s prefill",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    "${String.format("%.1f", uiState.decodeTokensPerSec)} tk/s decode",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    "${uiState.lastInferenceMs}ms",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         // Download progress
         if (uiState.modelDownloading) {
             Text(
