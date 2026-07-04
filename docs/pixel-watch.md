@@ -18,13 +18,14 @@ The PCOS Wear OS app provides ambient health context signals and a glanceable ti
 ```
 Phone (PCOS App)
     │
-    │  Data Layer API (/pcos-context, setUrgent)
+    │  WatchSyncManager.syncContext(setUrgent)
+    │  Data Layer API (/pcos-context)
     ▼
 PhoneDataListenerService ──► WatchState (shared StateFlow)
                                 │
     Health Services              ├── MainActivity (Compose UI)
-    │                            └── PCOSTileService (Tile)
-    ├── MeasureClient (foreground HR)
+    │                            ├── PCOSTileService (Tile)
+    ├── MeasureClient (foreground HR)  └── PCOSOngoingActivity (WO-V4)
     └── PassiveHealthService (background)
             │
             ├── HEART_RATE_BPM
@@ -51,6 +52,14 @@ PhoneDataListenerService ──► WatchState (shared StateFlow)
 - `BootReceiver` listens for `ACTION_BOOT_COMPLETED`
 - Delegates to `RegisterPassiveDataWorker` (WorkManager) to re-register passive monitoring
 - Worker has 10-minute execution limit (vs 10 seconds for BroadcastReceiver)
+
+### Ongoing Activity (WO-V4)
+- `PCOSOngoingActivity` creates an ongoing notification paired with `OngoingActivity`
+- Shows tappable icon on watch face for quick return to app
+- Dynamic `Status` updates with activity state and heart rate in launcher Recents
+- Notification channel: `pcos_health_monitoring` (IMPORTANCE_LOW)
+- Started on permission grant, stopped on activity destroy
+- Updates in real-time as `WatchState` changes
 
 ## Permissions
 
@@ -79,7 +88,7 @@ Use `setUrgent()` for time-sensitive context updates to avoid up to 30-minute sy
 |-------------|--------|
 | WO-P1: Target API 34+ | ✅ targetSdk = 34 |
 | WO-V3: Swipe to dismiss | ✅ Compose for Wear OS default |
-| WO-V4: Ongoing activity | Planned |
+| WO-V4: Ongoing activity | ✅ PCOSOngoingActivity with notification channel |
 | WO-V13: Black background | ✅ |
 | WO-V14: Min font 12sp | ✅ |
 | WO-V15: Splash screen | ✅ 48dp icon on black |

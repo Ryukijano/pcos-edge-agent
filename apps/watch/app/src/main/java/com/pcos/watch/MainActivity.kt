@@ -18,15 +18,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
-import androidx.wear.compose.material.Chip
-import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var healthMonitor: HealthMonitor
+    private var ongoingActivity: PCOSOngoingActivity? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -40,6 +40,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         healthMonitor = HealthMonitor(this)
+        ongoingActivity = PCOSOngoingActivity(this)
+
+        PCOSOngoingActivity.createChannel(this)
 
         val requiredPerms = mutableListOf(
             Manifest.permission.BODY_SENSORS,
@@ -62,12 +65,29 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        ongoingActivity?.stop()
+    }
+
     private fun startHealthMonitoring() {
         PassiveHealthService.register(this)
+
+        ongoingActivity?.start()
 
         lifecycleScope.launch {
             healthMonitor.heartRateFlow().collect { bpm ->
                 WatchState.update(watchHeartRate = bpm)
+            }
+        }
+
+        lifecycleScope.launch {
+            WatchState.state.collect { state ->
+                val hr = state.watchHeartRate ?: state.phoneHeartRate
+                ongoingActivity?.update(
+                    heartRate = if (hr > 0) hr else null,
+                    activityState = state.activityState
+                )
             }
         }
     }

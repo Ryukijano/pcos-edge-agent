@@ -1,30 +1,16 @@
 package com.pcos.watch
 
-import android.content.Context
 import android.util.Log
-import com.google.android.gms.wearable.DataClient
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.DataMapItem
-import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
-/**
- * Data Layer listener — receives context updates from the phone app.
- *
- * The phone sends PCOS context (activity state, broker status, task results)
- * via DataItems at path /pcos-context.
- *
- * This service runs on the watch and updates the shared WatchState so
- * the UI and tile can reflect current phone/broker status.
- */
 class PhoneDataListenerService : WearableListenerService() {
 
     companion object {
@@ -37,24 +23,34 @@ class PhoneDataListenerService : WearableListenerService() {
     }
 
     override fun onDataChanged(dataEvents: DataEventBuffer) {
+        if (GoogleApiAvailability.getInstance()
+            .isGooglePlayServicesAvailable(this) != ConnectionResult.SUCCESS) {
+            Log.w(TAG, "Google Play Services unavailable, ignoring data events")
+            return
+        }
+
         dataEvents.forEach { event ->
             if (event.type == DataEvent.TYPE_CHANGED) {
                 val item = event.dataItem
                 if (item.uri.path == PATH_CONTEXT) {
-                    val dataMap = DataMapItem.fromDataItem(item).dataMap
-                    val activityState = dataMap.getString(KEY_ACTIVITY_STATE, "idle")
-                    val brokerStatus = dataMap.getString(KEY_BROKER_STATUS, "unknown")
-                    val lastResult = dataMap.getString(KEY_LAST_RESULT, "")
-                    val heartRate = dataMap.getInt(KEY_HEART_RATE, 0)
+                    try {
+                        val dataMap = DataMapItem.fromDataItem(item).dataMap
+                        val activityState = dataMap.getString(KEY_ACTIVITY_STATE, "idle")
+                        val brokerStatus = dataMap.getString(KEY_BROKER_STATUS, "unknown")
+                        val lastResult = dataMap.getString(KEY_LAST_RESULT, "")
+                        val heartRate = dataMap.getInt(KEY_HEART_RATE, 0)
 
-                    Log.i(TAG, "Context update: activity=$activityState broker=$brokerStatus hr=$heartRate")
+                        Log.i(TAG, "Context update: activity=$activityState broker=$brokerStatus hr=$heartRate")
 
-                    WatchState.update(
-                        activityState = activityState,
-                        brokerStatus = brokerStatus,
-                        lastResult = lastResult,
-                        phoneHeartRate = heartRate,
-                    )
+                        WatchState.update(
+                            activityState = activityState,
+                            brokerStatus = brokerStatus,
+                            lastResult = lastResult,
+                            phoneHeartRate = heartRate,
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to parse data item", e)
+                    }
                 }
             }
         }

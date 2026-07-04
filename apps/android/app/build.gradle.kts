@@ -57,4 +57,8 @@ dependencies {
     // Foreground service
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-service:2.8.2")
+
+    // Data Layer API (phone → watch sync)
+    implementation("com.google.android.gms:play-services-wearable:19.0.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 }

@@ -67,5 +67,5 @@ dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
 
     // Ongoing Activity (Wear OS requirement WO-V4)
-    implementation("androidx.wear:wear-ongoing-activity:1.0.0")
+    implementation("androidx.wear:wear-ongoing:1.1.0")
 }

@@ -27,6 +27,7 @@ class PCOSViewModel : AndroidViewModel(Application()) {
 
     private val litertManager = LiteRTManager(getApplication())
     private val bridgeClient = BridgeClient(getApplication())
+    private val watchSync = WatchSyncManager(getApplication())
 
     init {
         checkConnections()
@@ -41,6 +42,7 @@ class PCOSViewModel : AndroidViewModel(Application()) {
                 brokerConnected = brokerOk,
                 bridgeConnected = bridgeOk,
             )
+            syncToWatch(brokerStatus = if (brokerOk) "ok" else "offline")
         }
     }
 
@@ -106,16 +108,20 @@ class PCOSViewModel : AndroidViewModel(Application()) {
                         litertManager.infer(input)
                     }
                     addOutput("  Result: $result")
+                    syncToWatch(activityState = "executing", lastResult = result)
                 } else if (surface == "chrome_builtin_ai") {
                     addOutput("  (Chrome should handle this locally)")
+                    syncToWatch(activityState = "chrome")
                 } else if (surface == "cloud_llm_escalation") {
                     addOutput("  (Cloud escalation — stripped & logged)")
+                    syncToWatch(activityState = "cloud")
                 }
             } else {
                 // Broker offline — run locally
                 addOutput("  Broker offline, running locally…")
                 val result = litertManager.infer(input)
                 addOutput("  Result: $result")
+                syncToWatch(brokerStatus = "offline", activityState = "local", lastResult = result)
             }
         }
     }
@@ -123,6 +129,19 @@ class PCOSViewModel : AndroidViewModel(Application()) {
     private fun addOutput(line: String) {
         _uiState.value = _uiState.value.copy(
             outputLines = _uiState.value.outputLines + line
+        )
+    }
+
+    private fun syncToWatch(
+        activityState: String = "idle",
+        brokerStatus: String = "unknown",
+        lastResult: String = "",
+    ) {
+        watchSync.syncContext(
+            activityState = activityState,
+            brokerStatus = brokerStatus,
+            lastResult = lastResult.take(200),
+            urgent = true,
         )
     }
 }
