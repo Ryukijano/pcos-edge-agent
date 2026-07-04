@@ -50,3 +50,14 @@ app.add_middleware(
 app.include_router(route_router)
 app.include_router(ops_router)
 app.include_router(bridge_router)
+
+
+def run():
+    """Entry point for pcos-broker CLI."""
+    import uvicorn
+    uvicorn.run(
+        "broker.main:app",
+        host=_settings.broker_host,
+        port=_settings.broker_port,
+        log_level=_settings.broker_log_level,
+    )
