@@ -74,6 +74,7 @@ object WatchState {
         val lastResult: String = "",
         val phoneHeartRate: Int = 0,
         val watchHeartRate: Int? = null,
+        val dailySteps: Int = 0,
     )
 
     fun update(
@@ -82,6 +83,7 @@ object WatchState {
         lastResult: String? = null,
         phoneHeartRate: Int? = null,
         watchHeartRate: Int? = null,
+        dailySteps: Int? = null,
     ) {
         _state.value = _state.value.copy(
             activityState = activityState ?: _state.value.activityState,
@@ -89,6 +91,7 @@ object WatchState {
             lastResult = lastResult ?: _state.value.lastResult,
             phoneHeartRate = phoneHeartRate ?: _state.value.phoneHeartRate,
             watchHeartRate = watchHeartRate ?: _state.value.watchHeartRate,
+            dailySteps = dailySteps ?: _state.value.dailySteps,
         )
     }
 }

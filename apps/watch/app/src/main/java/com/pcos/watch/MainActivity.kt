@@ -1,8 +1,11 @@
 package com.pcos.watch
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -20,27 +22,52 @@ import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var healthMonitor: HealthMonitor
 
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val allGranted = results.values.all { it }
+        if (allGranted) {
+            startHealthMonitoring()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         healthMonitor = HealthMonitor(this)
 
-        // Start collecting heart rate
-        lifecycleScope.launch {
-            healthMonitor.heartRateFlow().collect { bpm ->
-                WatchState.update(watchHeartRate = bpm)
-            }
+        val requiredPerms = mutableListOf(
+            Manifest.permission.BODY_SENSORS,
+            Manifest.permission.ACTIVITY_RECOGNITION,
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requiredPerms.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        if (HealthMonitor.hasPermissions(this)) {
+            startHealthMonitoring()
+        } else {
+            permissionLauncher.launch(requiredPerms.toTypedArray())
         }
 
         setContent {
             MaterialTheme {
                 PCOSWatchApp()
+            }
+        }
+    }
+
+    private fun startHealthMonitoring() {
+        PassiveHealthService.register(this)
+
+        lifecycleScope.launch {
+            healthMonitor.heartRateFlow().collect { bpm ->
+                WatchState.update(watchHeartRate = bpm)
             }
         }
     }
@@ -55,23 +82,26 @@ fun PCOSWatchApp() {
         verticalArrangement = Arrangement.spacedBy(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Title
         Text("PCOS", style = MaterialTheme.typography.title2)
 
-        // Heart rate
         val hr = state.watchHeartRate ?: state.phoneHeartRate
         Text(
             if (hr > 0) "$hr BPM" else "— BPM",
             style = MaterialTheme.typography.body1
         )
 
-        // Activity state
         Text(
             state.activityState.replaceFirstChar { it.uppercase() },
             style = MaterialTheme.typography.body2
         )
 
-        // Broker status
+        if (state.dailySteps > 0) {
+            Text(
+                "${state.dailySteps} steps",
+                style = MaterialTheme.typography.caption1
+            )
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             val color = if (state.brokerStatus == "ok") MaterialTheme.colors.primary
                          else MaterialTheme.colors.error
@@ -79,7 +109,6 @@ fun PCOSWatchApp() {
             Text(state.brokerStatus, style = MaterialTheme.typography.caption1)
         }
 
-        // Last result preview
         if (state.lastResult.isNotBlank()) {
             Text(
                 state.lastResult.take(60),

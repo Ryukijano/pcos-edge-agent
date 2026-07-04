@@ -8,18 +8,36 @@
     <!-- Data Layer -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Passive monitoring restore after reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Notifications (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Foreground service for health monitoring -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+
+    <!-- Watch form factor -->
     <uses-feature android:name="android.hardware.type.watch" />
 
     <application
         android:allowBackup="true"
-        android:label="PCOS"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault">
 
-        <!-- Main activity -->
+        <!-- Standalone app declaration (Play Store requirement) -->
+        <meta-data
+            android:name="com.google.android.wearable.standalone"
+            android:value="true" />
+
+        <!-- Main activity with splash screen -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/Theme.PCOS.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -37,10 +55,28 @@
             </intent-filter>
         </service>
 
+        <!-- Passive health monitoring service (background HR, activity state) -->
+        <service
+            android:name=".PassiveHealthService"
+            android:exported="true"
+            android:permission="com.google.android.wearable.healthservices.permission.PASSIVE_DATA_BINDING" />
+
+        <!-- Boot receiver — restores passive monitoring registration after reboot -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Tile service — PCOS watch tile -->
         <service
             android:name=".PCOSTileService"
             android:exported="true"
+            android:label="@string/tile_label"
+            android:description="@string/tile_description"
+            android:icon="@mipmap/ic_launcher"
             android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
             <intent-filter>
                 <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />

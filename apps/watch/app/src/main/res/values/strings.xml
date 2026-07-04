@@ -1,4 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PCOS</string>
+
+    <!-- Tile -->
+    <string name="tile_label">PCOS</string>
+    <string name="tile_description">Heart rate, activity, and broker status at a glance</string>
+
+    <!-- Notification channel -->
+    <string name="notification_channel_name">PCOS Health Monitoring</string>
+    <string name="notification_channel_desc">Background health data collection and broker status</string>
+
+    <!-- Ongoing activity -->
+    <string name="ongoing_activity_title">PCOS Active</string>
+    <string name="ongoing_activity_text">Monitoring health · Broker connected</string>
+
+    <!-- UI labels -->
+    <string name="label_heart_rate">Heart Rate</string>
+    <string name="label_activity">Activity</string>
+    <string name="label_broker">Broker</string>
+    <string name="label_status">Status</string>
+    <string name="label_no_data">—</string>
+    <string name="permission_rationale">PCOS needs body sensor and activity recognition permissions to monitor your health.</string>
+    <string name="permission_grant">Grant permissions</string>
+    <string name="broker_ok">Connected</string>
+    <string name="broker_offline">Offline</string>
+    <string name="broker_unknown">Unknown</string>
 </resources>
