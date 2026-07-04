@@ -247,6 +247,77 @@ Task-specific LoRA (Low-Rank Adaptation) adapters can be loaded on top of the ba
 
 Adapters share the base model's KV cache and weights — only the small adapter weights are swapped. This enables domain-specific fine-tuning without loading separate full models.
 
+### Model Quantization Toggle
+
+The Android app includes a QAT (Quantization-Aware Training) toggle switch in the UI:
+
+- **Standard models** — full precision, best quality (E2B: 2.6GB, E4B: 3.7GB)
+- **QAT Mobile models** — 2-bit quantized, smaller footprint (E2B: 1.1GB, E4B: 2.5GB)
+
+The `toggleQuantization()` function swaps between standard and QAT variants of the same base model. For example, E2B ↔ E2B Mobile. The switch is disabled for FunctionGemma (no QAT variant).
+
+### OpenAI SDK Compatibility
+
+The `LiteRTServerClient` includes helpers to create official OpenAI SDK clients pointed at the local `lit serve`:
+
+```python
+from models.local.litert_server_client import get_openai_client
+
+# Drop-in replacement for OpenAI()
+client = get_openai_client()
+response = client.chat.completions.create(
+    model="gemma4-e2b,gpu,4096",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+```
+
+Also supports `AsyncOpenAI` via `get_async_openai_client()`. The `LITERT_SERVER_URL` env var overrides the default `http://localhost:9379`.
+
+### Agent Skill: Android Demo App Generator
+
+The `agents/skills/create-litert-lm-android-demo-app/` directory contains a structured skill for generating standalone LiteRT-LM Android demo apps:
+
+- **SKILL.md** — execution process with 7 steps (gather params → build → deploy)
+- **references/** — UI layout, inference implementation, dependency setup (Maven + Bazel), compliance checklists
+
+Trigger prompt format:
+```
+Please create a LiteRT-LM Android demo app
+root: ~/litert_lm_project
+Maven Integration scenario
+Target: pixel 10
+model: gemma 4
+```
+
+### Benchmark CLI Integration
+
+The `scripts/run_benchmarks.py` script wraps `litert-lm benchmark` for automated regression testing:
+
+```bash
+# Benchmark E2B on GPU
+python scripts/run_benchmarks.py --model gemma4-e2b --backends gpu
+
+# Benchmark all models on CPU and GPU
+python scripts/run_benchmarks.py --model all --backends cpu,gpu
+
+# Run on Android device via ADB
+python scripts/run_benchmarks.py --model gemma4-e2b --backends gpu --android
+
+# Save results as JSON
+python scripts/run_benchmarks.py --model all --backends gpu --output results.json
+```
+
+Collects TTFT, prefill TPS, decode TPS, and peak memory. Exits non-zero on any failure for CI integration.
+
+### Chrome Extension: litert_server Streaming
+
+The Chrome sidepanel now supports streaming from `litert_server` via SSE. When the broker routes to `litert_server`, the sidepanel:
+
+1. Connects to `POST /litert_server/chat/stream` on the broker
+2. Reads the SSE stream chunk-by-chunk
+3. Displays tokens in real-time as they arrive
+4. Shows TTFT and total latency metrics after completion
+
 ## Chrome Built-in AI APIs (Chrome 138+)
 
 **Stable:**

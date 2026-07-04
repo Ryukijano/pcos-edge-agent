@@ -129,6 +129,8 @@ function displayResult(result, task) {
     executeViaChromeAI(decision.chrome_api, plan, task);
   } else if (decision.surface === 'chrome_webgpu') {
     executeViaWebGPU(task, decision, plan);
+  } else if (decision.surface === 'litert_server') {
+    executeViaLiteRTServer(task, decision, plan);
   } else if (decision.surface.startsWith('android_litert')) {
     relayToAndroid(task, decision, result);
   } else if (decision.surface === 'cloud_llm_escalation') {
@@ -137,6 +139,93 @@ function displayResult(result, task) {
     output.textContent = 'Querying PiecesOS memory…';
   } else {
     output.textContent = JSON.stringify(result, null, 2);
+  }
+}
+
+// ── LiteRT-LM Server (lit serve) execution ──────────────────────
+
+async function executeViaLiteRTServer(task, decision, plan) {
+  output.textContent = '';
+  const statusEl = document.createElement('p');
+  statusEl.className = 'placeholder';
+  statusEl.textContent = `Connecting to local LiteRT-LM server (${decision.reason})…`;
+  output.appendChild(statusEl);
+
+  const brokerUrl = localStorage.getItem('brokerUrl') || 'http://localhost:8000';
+
+  try {
+    const systemPrompt = plan?.system_prompt || '';
+    const modelId = decision.model_id || 'gemma4-e2b';
+    const backend = decision.backend || 'gpu';
+
+    const response = await fetch(`${brokerUrl}/litert_server/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: task,
+        system_prompt: systemPrompt,
+        model_id: modelId,
+        backend: backend,
+        max_tokens: 8192,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}`);
+    }
+
+    statusEl.remove();
+    const resultEl = document.createElement('div');
+    resultEl.className = 'result';
+    output.appendChild(resultEl);
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullText = '';
+    const startTime = performance.now();
+    let firstTokenTime = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const chunk = JSON.parse(data);
+          const delta = chunk.choices?.[0]?.delta?.content || '';
+          if (delta) {
+            if (firstTokenTime === 0) {
+              firstTokenTime = performance.now() - startTime;
+            }
+            fullText += delta;
+            resultEl.textContent = fullText;
+            scrollToBottom();
+          }
+        } catch (e) {
+          // Ignore parse errors for partial chunks
+        }
+      }
+    }
+
+    const totalTime = performance.now() - startTime;
+    const ttftStr = firstTokenTime > 0 ? `${(firstTokenTime / 1000).toFixed(2)}s` : 'N/A';
+
+    const metricsEl = document.createElement('p');
+    metricsEl.className = 'metrics';
+    metricsEl.textContent = `⚡ TTFT: ${ttftStr} | Total: ${(totalTime / 1000).toFixed(2)}s | via lit serve (${modelId},${backend})`;
+    output.appendChild(metricsEl);
+  } catch (err) {
+    statusEl.textContent = `LiteRT server unavailable: ${err.message}`;
+    statusEl.className = 'error';
   }
 }
 

@@ -17,6 +17,18 @@ enum class PCOSModel {
     GEMMA_4_E4B_MOBILE,
 }
 
+/** Whether a model is QAT-quantized (mobile variant). */
+fun PCOSModel.isQat(): Boolean = this == PCOSModel.GEMMA_4_E2B_MOBILE || this == PCOSModel.GEMMA_4_E4B_MOBILE
+
+/** Toggle between standard and QAT variant of the same model. */
+fun PCOSModel.toggleQuantization(): PCOSModel = when (this) {
+    PCOSModel.GEMMA_4_E2B -> PCOSModel.GEMMA_4_E2B_MOBILE
+    PCOSModel.GEMMA_4_E2B_MOBILE -> PCOSModel.GEMMA_4_E2B
+    PCOSModel.GEMMA_4_E4B -> PCOSModel.GEMMA_4_E4B_MOBILE
+    PCOSModel.GEMMA_4_E4B_MOBILE -> PCOSModel.GEMMA_4_E4B
+    else -> this
+}
+
 /** Recommended backend for each model based on benchmark data. */
 fun PCOSModel.recommendedBackend(): Backend = when (this) {
     PCOSModel.FUNCTION_GEMMA -> Backend.CPU()
@@ -60,6 +72,7 @@ data class PCOSUiState(
     val decodeTokensPerSec: Float = 0f,
     val timeToFirstTokenMs: Long = 0L,
     val lastInferenceMs: Long = 0L,
+    val useQat: Boolean = false,
 )
 
 class PCOSViewModel : AndroidViewModel(Application()) {
@@ -243,8 +256,16 @@ class PCOSViewModel : AndroidViewModel(Application()) {
     }
 
     fun selectModel(model: PCOSModel) {
-        _uiState.value = _uiState.value.copy(selectedModel = model, modelLoaded = false)
+        _uiState.value = _uiState.value.copy(selectedModel = model, modelLoaded = false, useQat = model.isQat())
         loadModel()
+    }
+
+    fun toggleQuantization() {
+        val current = _uiState.value.selectedModel
+        val toggled = current.toggleQuantization()
+        if (toggled != current) {
+            selectModel(toggled)
+        }
     }
 
     fun updateInput(text: String) {

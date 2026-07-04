@@ -118,6 +118,23 @@ fun PCOSApp(viewModel: PCOSViewModel = viewModel()) {
                 label = { Text("E4B Mobile") }
             )
         }
+
+        // Quantization toggle
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "QAT Mobile",
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Switch(
+                checked = uiState.useQat,
+                onCheckedChange = { viewModel.toggleQuantization() },
+                enabled = uiState.selectedModel != PCOSModel.FUNCTION_GEMMA,
+            )
+        }
+
         Text(
             "${uiState.selectedModel.displayName()} · ${uiState.selectedModel.sizeMb()}MB",
             style = MaterialTheme.typography.labelSmall,

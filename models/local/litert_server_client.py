@@ -3,7 +3,7 @@
 This module provides a drop-in replacement for the OpenAI Python client
 that routes requests to a local LiteRT-LM server instead of the cloud.
 
-Usage:
+Usage (direct client):
     from models.local.litert_server_client import LiteRTServerClient
 
     client = LiteRTServerClient(base_url="http://localhost:9379")
@@ -13,7 +13,29 @@ Usage:
     )
     print(response["choices"][0]["message"]["content"])
 
-For streaming:
+Usage (official OpenAI SDK):
+    from models.local.litert_server_client import get_openai_client
+
+    client = get_openai_client()  # returns openai.OpenAI pointed at lit serve
+    response = client.chat.completions.create(
+        model="gemma4-e2b,gpu,4096",
+        messages=[{"role": "user", "content": "Hello!"}],
+    )
+    print(response.choices[0].message.content)
+
+Usage (async OpenAI SDK):
+    from models.local.litert_server_client import get_async_openai_client
+
+    client = get_async_openai_client()
+    response = await client.chat.completions.create(
+        model="gemma4-e2b,gpu",
+        messages=[{"role": "user", "content": "Hello!"}],
+        stream=True,
+    )
+    async for chunk in response:
+        print(chunk.choices[0].delta.content or "", end="", flush=True)
+
+For streaming (direct client):
     for chunk in client.chat_completion_stream(
         messages=[{"role": "user", "content": "Tell me a story"}],
         model="gemma4-e2b,gpu",
@@ -23,6 +45,7 @@ For streaming:
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from typing import Iterator
 
@@ -142,3 +165,80 @@ class LiteRTServerClient:
 
     def __exit__(self, *args):
         self.close()
+
+
+# ── Official OpenAI SDK compatibility ────────────────────────────
+
+
+def get_openai_client(
+    base_url: str | None = None,
+    api_key: str = "litert-lm-local",
+) -> "OpenAI":
+    """Return an official openai.OpenAI client pointed at the local lit serve.
+
+    This is a drop-in replacement — any code using the OpenAI SDK can
+    switch to local LiteRT-LM by replacing their client initialization:
+
+        # Before (cloud):
+        client = OpenAI()
+
+        # After (local LiteRT-LM):
+        from models.local.litert_server_client import get_openai_client
+        client = get_openai_client()
+
+    The lit serve server doesn't validate API keys, so any non-empty
+    string works. The default "litert-lm-local" is a placeholder.
+
+    Args:
+        base_url: Override the server URL (default: env LITERT_SERVER_URL
+                  or http://localhost:9379/v1).
+        api_key: Placeholder API key (not validated by lit serve).
+
+    Returns:
+        openai.OpenAI client instance.
+    """
+    from openai import OpenAI
+
+    url = base_url or os.environ.get(
+        "LITERT_SERVER_URL", "http://localhost:9379"
+    )
+    return OpenAI(
+        base_url=f"{url}/v1",
+        api_key=api_key,
+    )
+
+
+def get_async_openai_client(
+    base_url: str | None = None,
+    api_key: str = "litert-lm-local",
+) -> "AsyncOpenAI":
+    """Return an official openai.AsyncOpenAI client pointed at local lit serve.
+
+    Usage:
+        from models.local.litert_server_client import get_async_openai_client
+
+        client = get_async_openai_client()
+        response = await client.chat.completions.create(
+            model="gemma4-e2b,gpu",
+            messages=[{"role": "user", "content": "Hello!"}],
+            stream=True,
+        )
+        async for chunk in response:
+            print(chunk.choices[0].delta.content or "", end="")
+
+    Args:
+        base_url: Override the server URL.
+        api_key: Placeholder API key (not validated by lit serve).
+
+    Returns:
+        openai.AsyncOpenAI client instance.
+    """
+    from openai import AsyncOpenAI
+
+    url = base_url or os.environ.get(
+        "LITERT_SERVER_URL", "http://localhost:9379"
+    )
+    return AsyncOpenAI(
+        base_url=f"{url}/v1",
+        api_key=api_key,
+    )
