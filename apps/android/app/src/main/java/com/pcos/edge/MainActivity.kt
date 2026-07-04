@@ -56,6 +56,11 @@ fun PCOSApp(viewModel: PCOSViewModel = viewModel()) {
         if (uiState.lastInferenceMs > 0) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
+                    "TTFT: ${uiState.timeToFirstTokenMs}ms",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+                Text(
                     "⚡ ${String.format("%.0f", uiState.prefillTokensPerSec)} tk/s prefill",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary

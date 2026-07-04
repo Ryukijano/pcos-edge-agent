@@ -184,28 +184,100 @@ async def compress_context(ctx: dict):
     return {"prompt_prefix": context.to_prompt_prefix()}
 
 
-@router.post("/litert_server/infer")
-async def litert_server_infer(prompt: str, system_prompt: str = ""):
-    """Proxy inference to a local LiteRT-LM server (lit serve).
+@router.get("/litert_server/models")
+async def litert_server_models():
+    """List available models from local LiteRT-LM server (lit serve).
 
-    The lit CLI starts a Gemini-compatible API server on port 9379 by default.
-    This endpoint forwards prompts to that server, keeping all data local.
+    Proxies GET /v1/models from the OpenAI-compatible server on port 9379.
     """
     import httpx
     server_url = _settings.litert_server_url if hasattr(_settings, 'litert_server_url') else "http://localhost:9379"
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{server_url}/v1/models")
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as e:
+        _log.warning("litert_server_models_unavailable", error=str(e))
+        return {"models": [], "error": str(e)}
+
+
+@router.post("/litert_server/infer")
+async def litert_server_infer(prompt: str, system_prompt: str = "", model_id: str = "gemma4-e2b", backend: str = "gpu", max_tokens: int = 8192):
+    """Proxy inference to a local LiteRT-LM server (lit serve).
+
+    Uses the OpenAI-compatible /v1/chat/completions endpoint.
+    The model field supports: model_id[,backend][,max_tokens]
+    Example: "gemma4-e2b,gpu,4096"
+    """
+    import httpx
+    server_url = _settings.litert_server_url if hasattr(_settings, 'litert_server_url') else "http://localhost:9379"
+    model_field = f"{model_id},{backend},{max_tokens}"
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
-                f"{server_url}/v1beta/models/gemma:generateContent",
+                f"{server_url}/v1/chat/completions",
                 json={
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "systemInstruction": {"parts": [{"text": system_prompt}]} if system_prompt else None,
+                    "model": model_field,
+                    "messages": messages,
+                    "stream": False,
                 },
             )
             resp.raise_for_status()
             data = resp.json()
-            text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-            return {"result": text, "surface": "litert_server", "local": True}
+            text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            usage = data.get("usage", {})
+            return {
+                "result": text,
+                "surface": "litert_server",
+                "local": True,
+                "model": data.get("model", model_id),
+                "usage": usage,
+            }
     except Exception as e:
         _log.warning("litert_server_unavailable", error=str(e))
         return {"result": f"[LiteRT server unavailable: {e}]", "surface": "litert_server", "local": False}
+
+
+@router.post("/litert_server/chat/stream")
+async def litert_server_chat_stream(prompt: str, system_prompt: str = "", model_id: str = "gemma4-e2b", backend: str = "gpu", max_tokens: int = 8192):
+    """Stream inference from local LiteRT-LM server via SSE.
+
+    Uses OpenAI-compatible /v1/chat/completions with stream=true.
+    Returns Server-Sent Events (SSE) chunks.
+    """
+    import httpx
+    from fastapi.responses import StreamingResponse
+    import json
+
+    server_url = _settings.litert_server_url if hasattr(_settings, 'litert_server_url') else "http://localhost:9379"
+    model_field = f"{model_id},{backend},{max_tokens}"
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    async def stream_generator():
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream(
+                    "POST",
+                    f"{server_url}/v1/chat/completions",
+                    json={
+                        "model": model_field,
+                        "messages": messages,
+                        "stream": True,
+                    },
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if line.startswith("data: "):
+                            yield line + "\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(stream_generator(), media_type="text/event-stream")

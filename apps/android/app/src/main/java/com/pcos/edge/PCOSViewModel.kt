@@ -277,18 +277,23 @@ class PCOSViewModel : AndroidViewModel(Application()) {
                     val plan = routing.optJSONObject("plan")
                     val tools = plan?.optJSONArray("tools")
                     val inferStart = System.nanoTime()
+                    var firstTokenTime: Long = 0L
                     val result = if (tools != null && tools.length() > 0 && surface == "android_litert_functiongemma") {
                         addOutput("  Tools available: ${tools.length()}")
                         litertManager.inferWithTools(input, listOf(PCOSToolSet(getApplication())))
                     } else {
                         addOutput("  Using ${_uiState.value.selectedModel.displayName()}")
                         litertManager.inferStreaming(input) { chunk ->
+                            if (firstTokenTime == 0L) {
+                                firstTokenTime = (System.nanoTime() - inferStart) / 1_000_000
+                            }
                             _uiState.value = _uiState.value.copy(
                                 streamingText = _uiState.value.streamingText + chunk
                             )
                         }
                     }
                     val inferElapsedMs = (System.nanoTime() - inferStart) / 1_000_000
+                    val ttftMs = if (firstTokenTime > 0) firstTokenTime else inferElapsedMs
                     // Estimate tokens: ~4 chars per token for English text
                     val outputTokens = maxOf(1, result.length / 4)
                     val decodeTkSec = if (inferElapsedMs > 0) (outputTokens.toFloat() / inferElapsedMs * 1000) else 0f
@@ -297,10 +302,11 @@ class PCOSViewModel : AndroidViewModel(Application()) {
                     _uiState.value = _uiState.value.copy(
                         prefillTokensPerSec = prefillTkSec,
                         decodeTokensPerSec = decodeTkSec,
+                        timeToFirstTokenMs = ttftMs,
                         lastInferenceMs = inferElapsedMs,
                     )
                     addOutput("  Result: $result")
-                    addOutput("  ⚡ ${String.format("%.0f", prefillTkSec)} tk/s prefill, ${String.format("%.1f", decodeTkSec)} tk/s decode, ${inferElapsedMs}ms")
+                    addOutput("  ⚡ TTFT: ${ttftMs}ms | ${String.format("%.0f", prefillTkSec)} tk/s prefill | ${String.format("%.1f", decodeTkSec)} tk/s decode | ${inferElapsedMs}ms total")
                     syncToWatch(activityState = "executing", lastResult = result)
                 } else if (surface == "chrome_builtin_ai") {
                     addOutput("  (Chrome should handle this locally)")

@@ -189,23 +189,49 @@ def route(task):
 
 ### LiteRT-LM Server (`lit serve`)
 
-The LiteRT-LM CLI includes a `serve` command that starts a **Gemini-compatible local HTTP server**:
+The LiteRT-LM CLI includes a `serve` command that starts an **OpenAI-compatible local HTTP server**:
 
 ```bash
-lit serve --port 9379
+litert-lm serve
+# Starts on port 9379 with OpenAI-compatible endpoints:
+#   GET  /v1/models          — list available models
+#   POST /v1/chat/completions — chat completions (streaming supported)
 ```
+
+The model field supports dynamic backend selection: `model_id[,backend][,max_tokens]`
+Example: `"gemma4-e2b,gpu,4096"`
 
 When a desktop with `lit serve` running is detected in the context, the broker routes long reasoning tasks to it instead of cloud — keeping all data local while leveraging desktop GPU power.
 
-The broker proxies requests via `POST /litert_server/infer` to the local server's Gemini-compatible API.
+The broker proxies requests via three endpoints:
+- `GET /litert_server/models` — list available models
+- `POST /litert_server/infer` — non-streaming inference
+- `POST /litert_server/chat/stream` — SSE streaming inference
+
+A Python client wrapper (`LiteRTServerClient`) is available in `models/local/litert_server_client.py` for drop-in OpenAI client replacement:
+
+```python
+from models.local.litert_server_client import LiteRTServerClient
+
+with LiteRTServerClient() as client:
+    if client.is_available():
+        resp = client.chat_completion(
+            messages=[{"role": "user", "content": "Hello!"}],
+            model="gemma4-e2b,gpu,4096",
+        )
+        print(resp["choices"][0]["message"]["content"])
+```
 
 ### Benchmark Dashboard
 
-The Android app displays real-time performance metrics after each inference:
+The Android, iOS, and Flutter apps display real-time performance metrics after each inference:
 
+- **TTFT** (ms) — time-to-first-token, measures prefill latency
 - **Prefill throughput** (tokens/sec) — input processing speed
-- **Decode throughput** (tokens/sec) — output generation speed  
-- **Total latency** (ms) — wall-clock time for the inference
+- **Decode throughput** (tokens/sec) — output generation speed
+- **Total latency** (ms) — wall-clock time for the complete inference
+
+TTFT is measured from inference start to the first streaming chunk received. This matches the LiteRT-LM `BenchmarkInfo` metric: `TTFT = first_prefill_turn_duration + first_decode_turn_duration`.
 
 Tokens are estimated at ~4 chars/token for English text. The dashboard updates after every execution.
 
