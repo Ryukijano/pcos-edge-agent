@@ -13,11 +13,17 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Material3.DynamicColors.DayNight">
 
-        <!-- LiteRT-LM GPU backend native libraries -->
+        <!-- LiteRT-LM GPU backend native libraries (OpenCL for Adreno) -->
         <uses-native-library android:name="libvndksupport.so" android:required="false" />
         <uses-native-library android:name="libOpenCL.so" android:required="false" />
         <uses-native-library android:name="libOpenCL-car.so" android:required="false" />
         <uses-native-library android:name="libOpenCL-pixel.so" android:required="false" />
+
+        <!-- LiteRT-LM NPU backend native libraries (Qualcomm QAIRT for Hexagon DSP) -->
+        <uses-native-library android:name="libQnnHtp.so" android:required="false" />
+        <uses-native-library android:name="libQnnHtpPrepare.so" android:required="false" />
+        <uses-native-library android:name="libQnnHtpV79Skel.so" android:required="false" />
+        <uses-native-library android:name="liblitert_dispatch_api.so" android:required="false" />
 
         <activity
             android:name=".MainActivity"

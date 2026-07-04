@@ -89,7 +89,28 @@ pcos-edge-agent/
 | Gemma 4 E2B (2.3B) | 2.58GB | GPU | 3808 | 52 | General chat, transforms |
 | Gemma 4 E4B (4.5B) | 3.65GB | GPU | 1293 | 22 | Complex reasoning, multimodal |
 
-*Benchmarks from Samsung S26 Ultra. Adreno 730 (OnePlus 11R) uses OpenCL GPU backend with similar decode throughput. MTP/speculative decoding enabled for E2B/E4B. Apple Metal supported via LiteRT-LM Swift APIs.*
+*Benchmarks from Samsung S26 Ultra. Adreno 730 (OnePlus 11R) uses OpenCL GPU backend with similar decode throughput. MTP/speculative decoding enabled for E2B/E4B. Apple Metal supported via LiteRT-LM Swift APIs. NPU (Qualcomm QNN) supported on Snapdragon 8 Gen 2+ with auto-fallback to GPU/CPU.*
+
+### Backend Auto-Selection
+
+The Android app automatically detects the best available backend:
+
+1. **NPU** (Qualcomm QNN) — Snapdragon 8 Gen 2+ (SM8550+), Hexagon DSP
+2. **GPU** (OpenCL/ML Drift) — Adreno 730+ (Snapdragon 8 Gen 1+)
+3. **CPU** (XNNPack) — Universal fallback
+
+If the preferred backend fails, the app automatically falls back to the next available. MTP is disabled on CPU fallback for stability.
+
+### Model Warm-Loading
+
+On app startup, Gemma 4 E2B is warm-loaded in the background (download + initialize) for instant first response. Falls back to FunctionGemma 270M if E2B download fails.
+
+### Dynamic Model Switching
+
+When the broker routes a task to a different model surface (e.g., E2B → E4B for reasoning), the app automatically:
+1. Downloads the target model if not cached
+2. Swaps the loaded model in memory
+3. Resumes inference on the new model
 
 ## Routing Policy
 

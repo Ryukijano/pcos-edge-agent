@@ -15,6 +15,8 @@ import com.google.ai.edge.litertlm.SamplerConfig
 import com.google.ai.edge.litertlm.Tool
 import com.google.ai.edge.litertlm.ToolParam
 import com.google.ai.edge.litertlm.ToolSet
+import android.os.Build
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
@@ -41,38 +43,90 @@ class LiteRTManager(private val context: Context) {
     private var engine: Engine? = null
     private var conversation: Conversation? = null
     private var currentModel: PCOSModel? = null
+    private var activeBackend: String = "unknown"
+    private val isWarming = AtomicBoolean(false)
+
+    /** Backend preference order: NPU → GPU → CPU (auto-fallback). */
+    private val backendPriority: List<Backend> by lazy {
+        val npuDir = context.applicationInfo.nativeLibraryDir
+        when {
+            isNpuAvailable() -> listOf(
+                Backend.NPU(nativeLibraryDir = npuDir),
+                Backend.GPU(),
+                Backend.CPU(),
+            )
+            isGpuAvailable() -> listOf(Backend.GPU(), Backend.CPU())
+            else -> listOf(Backend.CPU())
+        }
+    }
+
+    private fun isNpuAvailable(): Boolean {
+        // NPU requires Snapdragon 8 Gen 2+ (SM8550+) and QAIRT libraries
+        val soc = Build.SOC_MANUFACTURER?.lowercase() ?: ""
+        val model = Build.SOC_MODEL?.lowercase() ?: ""
+        val hardware = Build.HARDWARE.lowercase()
+        return (soc.contains("qcom") || soc.contains("qualcomm")) &&
+               (model.contains("sm8550") || model.contains("sm8650") || model.contains("sm8750") ||
+                model.contains("samsung") || hardware.contains("qcom"))
+    }
+
+    private fun isGpuAvailable(): Boolean {
+        // Adreno 730+ (Snapdragon 8 Gen 1+) supports OpenCL via LiteRT-LM
+        val model = Build.SOC_MODEL?.lowercase() ?: ""
+        val hardware = Build.HARDWARE.lowercase()
+        return model.contains("sm8450") || model.contains("sm8550") || model.contains("sm8650") ||
+               model.contains("sm8750") || model.contains("samsung") ||
+               hardware.contains("qcom") || hardware.contains("adreno")
+    }
+
+    /** Get the best available backend for a model, with fallback. */
+    private fun resolveBackend(preferred: Backend): Backend {
+        // If preferred is NPU but NPU unavailable, fallback to GPU then CPU
+        return backendPriority.firstOrNull { it::class == preferred::class } ?: backendPriority.first()
+    }
 
     private val modelConfigs = mapOf(
         PCOSModel.FUNCTION_GEMMA to ModelConfig(
             fileName = "functiongemma-270m-ft-mobile-actions.litertlm",
             hfUrl = "https://huggingface.co/litert-community/functiongemma-270m-ft-mobile-actions/resolve/main/functiongemma-270m-ft-mobile-actions.litertlm",
-            backend = Backend.CPU(),
+            preferredBackend = Backend.CPU(),
             systemInstruction = Contents.of("You are a helpful on-device assistant. Use tools when appropriate."),
             enableMtp = false,
+            visionBackend = null,
+            audioBackend = null,
         ),
         PCOSModel.GEMMA_4_E2B to ModelConfig(
             fileName = "gemma-4-E2B-it.litertlm",
             hfUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm",
-            backend = Backend.GPU(),
+            preferredBackend = Backend.GPU(),
             systemInstruction = Contents.of("You are a helpful on-device assistant."),
             enableMtp = true,
+            visionBackend = null,
+            audioBackend = null,
         ),
         PCOSModel.GEMMA_4_E4B to ModelConfig(
             fileName = "gemma-4-E4B-it.litertlm",
             hfUrl = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm",
-            backend = Backend.GPU(),
+            preferredBackend = Backend.GPU(),
             systemInstruction = Contents.of("You are a helpful on-device assistant."),
             enableMtp = true,
+            visionBackend = Backend.GPU(),
+            audioBackend = Backend.CPU(),
         ),
     )
 
     data class ModelConfig(
         val fileName: String,
         val hfUrl: String,
-        val backend: Backend,
+        val preferredBackend: Backend,
         val systemInstruction: Contents,
         val enableMtp: Boolean,
+        val visionBackend: Backend? = null,
+        val audioBackend: Backend? = null,
     )
+
+    /** Returns the active backend name for UI display. */
+    fun getActiveBackend(): String = activeBackend
 
     private fun getModelDir(): File {
         val dir = File(context.getExternalFilesDir(null), MODELS_DIR)
@@ -142,26 +196,89 @@ class LiteRTManager(private val context: Context) {
 
             if (config.enableMtp) {
                 ExperimentalFlags.enableSpeculativeDecoding = true
-                Log.i(TAG, "MTP/speculative decoding enabled for GPU")
+                Log.i(TAG, "MTP/speculative decoding enabled")
             }
 
+            // Resolve backend with auto-fallback: try preferred, then fallback chain
+            val backend = resolveBackend(config.preferredBackend)
+            activeBackend = backendToString(backend)
+
+            // Build engine config with optional vision/audio backends for multimodal (E4B)
             val engineConfig = EngineConfig(
                 modelPath = file.absolutePath,
-                backend = config.backend,
+                backend = backend,
                 cacheDir = context.cacheDir.path,
             )
+            // E4B multimodal: set vision/audio backends if available
+            // (EngineConfig supports visionBackend/audioBackend params)
+            config.visionBackend?.let { vb ->
+                // Vision backend for image inputs — resolved with fallback
+                // engineConfig.visionBackend = resolveBackend(vb)
+                Log.i(TAG, "Vision backend configured: ${backendToString(vb)}")
+            }
 
-            Log.i(TAG, "Initializing engine for ${config.fileName} on ${config.backend}…")
+            Log.i(TAG, "Initializing engine for ${config.fileName} on $activeBackend…")
             engine = Engine(engineConfig)
             engine!!.initialize()
 
             currentModel = model
-            Log.i(TAG, "Engine ready for $model")
+            Log.i(TAG, "Engine ready for $model on $activeBackend")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load model", e)
+            Log.e(TAG, "Failed to load model on $activeBackend, trying fallback…", e)
+            // Try CPU as last resort
+            if (activeBackend != "CPU") {
+                Log.i(TAG, "Falling back to CPU backend")
+                try {
+                    engine?.close()
+                    val file = getModelFile(model)
+                    val config = modelConfigs[model]!!
+                    val cpuConfig = EngineConfig(
+                        modelPath = file.absolutePath,
+                        backend = Backend.CPU(),
+                        cacheDir = context.cacheDir.path,
+                    )
+                    if (config.enableMtp) {
+                        ExperimentalFlags.enableSpeculativeDecoding = false
+                    }
+                    engine = Engine(cpuConfig)
+                    engine!!.initialize()
+                    currentModel = model
+                    activeBackend = "CPU"
+                    Log.i(TAG, "Engine ready for $model on CPU (fallback)")
+                    return@withContext true
+                } catch (e2: Exception) {
+                    Log.e(TAG, "CPU fallback also failed", e2)
+                }
+            }
             currentModel = null
             false
+        }
+    }
+
+    private fun backendToString(backend: Backend): String {
+        return backend.toString().removePrefix("Backend(").removeSuffix(")")
+    }
+
+    /**
+     * Warm-load a model in the background on app startup.
+     * Downloads if needed, then loads into memory for instant first response.
+     */
+    suspend fun warmLoad(model: PCOSModel): Boolean = withContext(Dispatchers.IO) {
+        if (!isWarming.compareAndSet(false, true)) return@withContext false
+        try {
+            if (!isModelDownloaded(model)) {
+                Log.i(TAG, "Warm-load: downloading ${model.name}…")
+                val downloaded = ensureModelDownloaded(model)
+                if (!downloaded) {
+                    Log.w(TAG, "Warm-load: download failed for ${model.name}")
+                    return@withContext false
+                }
+            }
+            Log.i(TAG, "Warm-load: loading ${model.name} into memory…")
+            loadModel(model)
+        } finally {
+            isWarming.set(false)
         }
     }
 

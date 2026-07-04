@@ -43,6 +43,15 @@ fun PCOSApp(viewModel: PCOSViewModel = viewModel()) {
             StatusChip("LiteRT-LM", uiState.modelLoaded)
         }
 
+        // Backend info
+        if (uiState.modelLoaded) {
+            Text(
+                "Backend: ${uiState.activeBackend}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
         // Download progress
         if (uiState.modelDownloading) {
             Text(

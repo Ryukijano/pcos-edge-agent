@@ -43,6 +43,7 @@ data class PCOSUiState(
     val modelDownloading: Boolean = false,
     val downloadProgress: String = "",
     val selectedModel: PCOSModel = PCOSModel.FUNCTION_GEMMA,
+    val activeBackend: String = "unknown",
     val inputText: String = "",
     val outputLines: List<String> = emptyList(),
     val isExecuting: Boolean = false,
@@ -59,7 +60,7 @@ class PCOSViewModel : AndroidViewModel(Application()) {
 
     init {
         checkConnections()
-        loadModel()
+        warmLoadDefaultModel()
         setupBridgeRelay()
     }
 
@@ -116,6 +117,78 @@ class PCOSViewModel : AndroidViewModel(Application()) {
         }
     }
 
+    /**
+     * Warm-load the default model (E2B) on app startup for instant first response.
+     * Falls back to FunctionGemma if E2B download fails.
+     */
+    private fun warmLoadDefaultModel() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                selectedModel = PCOSModel.GEMMA_4_E2B,
+                modelDownloading = true,
+                downloadProgress = "Warm-loading Gemma 4 E2B…",
+            )
+            val loaded = litertManager.warmLoad(PCOSModel.GEMMA_4_E2B)
+            if (loaded) {
+                _uiState.value = _uiState.value.copy(
+                    modelLoaded = true,
+                    modelDownloading = false,
+                    downloadProgress = "",
+                    activeBackend = litertManager.getActiveBackend(),
+                )
+            } else {
+                // Fallback to FunctionGemma (smaller, faster download)
+                _uiState.value = _uiState.value.copy(
+                    selectedModel = PCOSModel.FUNCTION_GEMMA,
+                    downloadProgress = "Falling back to FunctionGemma…",
+                )
+                val fgLoaded = litertManager.warmLoad(PCOSModel.FUNCTION_GEMMA)
+                _uiState.value = _uiState.value.copy(
+                    modelLoaded = fgLoaded,
+                    modelDownloading = false,
+                    downloadProgress = if (fgLoaded) "" else "Download failed",
+                    activeBackend = if (fgLoaded) litertManager.getActiveBackend() else "none",
+                )
+            }
+        }
+    }
+
+    /**
+     * Dynamically switch model based on task type detected by the broker.
+     * E2B for transforms (fast), E4B for reasoning (capable).
+     */
+    private suspend fun maybeSwitchModel(surface: String) {
+        val targetModel = when {
+            surface == "android_litert_functiongemma" -> PCOSModel.FUNCTION_GEMMA
+            surface == "android_litert_gemma_e4b" -> PCOSModel.GEMMA_4_E4B
+            surface == "android_litert_gemma_e2b" -> PCOSModel.GEMMA_4_E2B
+            else -> return
+        }
+        if (_uiState.value.selectedModel != targetModel) {
+            addOutput("  Switching model: ${_uiState.value.selectedModel.displayName()} → ${targetModel.displayName()}")
+            _uiState.value = _uiState.value.copy(
+                selectedModel = targetModel,
+                modelLoaded = false,
+            )
+            if (!litertManager.isModelDownloaded(targetModel)) {
+                _uiState.value = _uiState.value.copy(
+                    modelDownloading = true,
+                    downloadProgress = "Downloading ${targetModel.displayName()}…",
+                )
+                litertManager.ensureModelDownloaded(targetModel)
+                _uiState.value = _uiState.value.copy(
+                    modelDownloading = false,
+                    downloadProgress = "",
+                )
+            }
+            val loaded = litertManager.loadModel(targetModel)
+            _uiState.value = _uiState.value.copy(
+                modelLoaded = loaded,
+                activeBackend = if (loaded) litertManager.getActiveBackend() else "none",
+            )
+        }
+    }
+
     private fun checkConnections() {
         viewModelScope.launch {
             val brokerOk = bridgeClient.checkBroker()
@@ -147,7 +220,10 @@ class PCOSViewModel : AndroidViewModel(Application()) {
             }
 
             val loaded = mgr.loadModel(model)
-            _uiState.value = _uiState.value.copy(modelLoaded = loaded)
+            _uiState.value = _uiState.value.copy(
+                modelLoaded = loaded,
+                activeBackend = if (loaded) mgr.getActiveBackend() else "none",
+            )
         }
     }
 
@@ -181,6 +257,8 @@ class PCOSViewModel : AndroidViewModel(Application()) {
                 addOutput("  Routed to: $surface")
 
                 if (surface.startsWith("android_litert")) {
+                    // Dynamic model switching based on broker's routing decision
+                    maybeSwitchModel(surface)
                     val plan = routing.optJSONObject("plan")
                     val tools = plan?.optJSONArray("tools")
                     val result = if (tools != null && tools.length() > 0 && surface == "android_litert_functiongemma") {
