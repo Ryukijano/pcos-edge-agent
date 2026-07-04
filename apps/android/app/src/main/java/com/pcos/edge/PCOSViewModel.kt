@@ -34,6 +34,60 @@ class PCOSViewModel : AndroidViewModel(Application()) {
     init {
         checkConnections()
         loadModel()
+        setupBridgeRelay()
+    }
+
+    private fun setupBridgeRelay() {
+        bridgeClient.onMessage = { msg ->
+            when (msg.optString("type")) {
+                "relay" -> {
+                    val payload = msg.optJSONObject("payload") ?: return@onMessage
+                    val fromClientId = msg.optString("from", "")
+                    handleRelayTask(payload, fromClientId)
+                }
+            }
+        }
+        bridgeClient.connect()
+    }
+
+    private fun handleRelayTask(payload: JSONObject, fromClientId: String) {
+        val task = payload.optJSONObject("task") ?: return
+        val text = task.optString("text", "")
+        if (text.isBlank()) return
+
+        val decision = payload.optJSONObject("decision")
+        val surface = decision?.optString("surface", "") ?: ""
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isExecuting = true, streamingText = "")
+            addOutput("← Bridge relay: $text")
+
+            // Send status update to Chrome
+            bridgeClient.sendRelay(fromClientId, JSONObject().put("type", "status").put("message", "Executing on Android…"))
+
+            val result = if (surface == "android_litert_functiongemma") {
+                litertManager.inferWithTools(text, listOf(PCOSToolSet(getApplication())))
+            } else {
+                litertManager.inferStreaming(text) { chunk ->
+                    _uiState.value = _uiState.value.copy(
+                        streamingText = _uiState.value.streamingText + chunk
+                    )
+                    // Stream chunks to Chrome
+                    bridgeClient.sendRelay(
+                        fromClientId,
+                        JSONObject().put("type", "streaming-chunk").put("chunk", chunk)
+                    )
+                }
+            }
+
+            addOutput("  Result: $result")
+
+            // Send final result to Chrome
+            bridgeClient.sendResult(fromClientId, result)
+
+            syncToWatch(activityState = "executing", lastResult = result)
+            _uiState.value = _uiState.value.copy(isExecuting = false, streamingText = "")
+        }
     }
 
     private fun checkConnections() {

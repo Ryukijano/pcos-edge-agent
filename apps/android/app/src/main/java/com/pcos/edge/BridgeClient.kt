@@ -71,6 +71,15 @@ class BridgeClient(private val context: Context) {
         send(msg)
     }
 
+    fun sendRelay(target: String, payload: JSONObject) {
+        val msg = JSONObject().apply {
+            put("type", "relay")
+            put("target", target)
+            put("payload", payload)
+        }
+        send(msg)
+    }
+
     suspend fun checkBroker(): Boolean = withContext(Dispatchers.IO) {
         try {
             val url = java.net.URL("$brokerUrl/health")

@@ -46,6 +46,7 @@ class RouteResponse(BaseModel):
 class ExecuteResponse(BaseModel):
     decision: RouteResponse
     plan: dict
+    cloud_result: Optional[str] = None
 
 
 def _surface_val(decision) -> str:
@@ -133,6 +134,34 @@ async def execute_task(req: ExecuteRequest):
             reason=decision.reason,
             task_text=task.text,
             user_explicit=task.user_explicit_escalate,
+        )
+
+        # Actually call cloud provider if API keys are available
+        cloud_result = None
+        try:
+            from models.cloud.escalation_provider import escalate_to_cloud, get_available_providers
+            providers = get_available_providers()
+            if providers:
+                cloud_result = await escalate_to_cloud(
+                    task_text=task.text,
+                    system_prompt=plan.system_prompt if hasattr(plan, 'system_prompt') else "",
+                    provider=providers[0],
+                )
+        except Exception as e:
+            _log.warning("cloud_escalation_failed", error=str(e))
+
+        return ExecuteResponse(
+            decision=RouteResponse(
+                surface=sv,
+                chrome_api=_api_val(decision),
+                reason=decision.reason,
+                escalate_to_cloud=decision.escalate_to_cloud,
+                context_payload=decision.context_payload,
+                tool_plan=decision.tool_plan,
+                latency_target_ms=decision.latency_target_ms,
+            ),
+            plan=plan.model_dump(),
+            cloud_result=cloud_result,
         )
 
     return ExecuteResponse(

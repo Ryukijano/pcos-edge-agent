@@ -128,7 +128,7 @@ function displayResult(result, task) {
   if (decision.surface === 'chrome_builtin_ai' && decision.chrome_api) {
     executeViaChromeAI(decision.chrome_api, plan, task);
   } else if (decision.surface === 'android_litert_functiongemma' || decision.surface === 'android_litert_gemma_full') {
-    output.textContent = `Routed to Android (${decision.reason}). Use the bridge to relay.`;
+    relayToAndroid(task, decision, result);
   } else if (decision.surface === 'cloud_llm_escalation') {
     output.textContent = `Cloud escalation: ${decision.reason}`;
   } else if (decision.surface === 'piecesos_memory_then_local') {
@@ -139,6 +139,46 @@ function displayResult(result, task) {
 }
 
 // ── Chrome Built-in AI execution ───────────────────────────────
+
+// ── Relay to Android via bridge ────────────────────────────────
+
+async function relayToAndroid(task, decision, brokerResult) {
+  output.textContent = '';
+  const statusEl = document.createElement('p');
+  statusEl.className = 'placeholder';
+  statusEl.textContent = `Relaying to Android (${decision.reason})…`;
+  output.appendChild(statusEl);
+
+  const plan = brokerResult.plan || {};
+  const relayPayload = {
+    type: 'pcos-execute',
+    task: task,
+    plan: plan,
+    decision: { surface: decision.surface, reason: decision.reason },
+  };
+
+  // Send via bridge WebSocket
+  chrome.runtime.sendMessage(
+    { type: 'pcos-bridge-send', message: { type: 'relay', payload: relayPayload } },
+    (resp) => {
+      if (chrome.runtime.lastError) {
+        statusEl.textContent = 'Bridge not connected. Waiting for Android…';
+      } else {
+        statusEl.textContent = 'Task relayed to Android. Waiting for result…';
+      }
+    }
+  );
+
+  // Result will arrive via 'pcos-bridge-message' listener (setupListeners)
+  // Timeout after 30s
+  setTimeout(() => {
+    if (statusEl.parentNode && statusEl.textContent.includes('Waiting')) {
+      statusEl.textContent = 'Android did not respond within 30s. Is the app running?';
+    }
+  }, 30000);
+}
+
+// ── Chrome Built-in AI execution (continued) ───────────────────
 
 async function executeViaChromeAI(apiName, plan, task) {
   output.textContent = '';
@@ -223,7 +263,7 @@ function setupListeners() {
     }
   });
 
-  // Receive results from context menu
+  // Receive results from context menu and bridge
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === 'pcos-result') {
       displayResult(msg.result, msg.task);
@@ -232,7 +272,19 @@ function setupListeners() {
     if (msg.type === 'pcos-bridge-message') {
       const m = msg.message;
       if (m.type === 'result') {
-        output.textContent = m.payload?.result || JSON.stringify(m.payload, null, 2);
+        // Final result from Android
+        const resultText = m.payload?.result || JSON.stringify(m.payload, null, 2);
+        output.textContent = resultText;
+        executeBtn.disabled = false;
+        stopBtn.style.display = 'none';
+      } else if (m.type === 'relay') {
+        // Streaming chunk or intermediate status from Android
+        const payload = m.payload || {};
+        if (payload.type === 'streaming-chunk' && payload.chunk) {
+          output.textContent += payload.chunk;
+        } else if (payload.type === 'status') {
+          output.textContent = payload.message || 'Processing on Android…';
+        }
       }
     }
   });

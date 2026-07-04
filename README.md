@@ -75,7 +75,7 @@ pcos-edge-agent/
 
 | Plane | Surface | Role |
 |---|---|---|
-| Browser | Chrome Canary | Page-grounded NLP transforms, side panel UI |
+| Browser | Chrome 138+ | Page-grounded NLP transforms, side panel UI |
 | Device | Android + LiteRT-LM | Private offline inference, function calling |
 | Memory | PiecesOS | Episodic LTM, MCP, workflow context |
 | Ambient | Pixel Watch 4 | Lightweight context signals, quick actions |
@@ -98,15 +98,40 @@ def route(task):
     return "local_first_default"
 ```
 
-## Chrome Built-in AI APIs
+## Chrome Built-in AI APIs (Chrome 138+)
 
-- ✅ Prompt API — natural language instructions to Gemma locally
-- ✅ Summarizer API — summarization with speed/capability preference
-- ✅ Writer API — long-form generation
-- ✅ Rewriter API — transformation of existing text
-- ✅ Proofreader API — grammar/clarity on a small expert model
-- ✅ Translator API — translation between languages (Chrome 138+)
-- ✅ Language Detector API — detect text language (Chrome 138+)
+**Stable:**
+- ✅ `LanguageModel` (Prompt API) — natural language instructions to Gemini Nano, streaming via `promptStreaming()`
+- ✅ `Summarizer` — summarization with type/length/format options, streaming via `summarizeStreaming()`
+- ✅ `Translator` — translation between languages (expert model)
+- ✅ `LanguageDetector` — detect text language (expert model)
+
+**Developer Trial:**
+- ⚠️ `Writer` — long-form generation with `sharedContext`
+- ⚠️ `Rewriter` — transformation of existing text with tone control
+- ⚠️ `Proofreader` — grammar/clarity on a small expert model
+
+## Chrome ↔ Android Bridge
+
+```
+Chrome Extension → WebSocket → Broker /bridge → Android BridgeClient
+                                                      │
+                                              LiteRT-LM inference
+                                                      │
+Chrome Extension ← WebSocket ← Broker /bridge ← Android (result + streaming)
+```
+
+- Chrome sends task via broker `/execute` → routed to Android → relayed via WebSocket bridge
+- Android executes LiteRT-LM inference, streams chunks back to Chrome in real-time
+- Final result delivered to Chrome side panel
+
+## Cloud Escalation (Last Resort)
+
+- ✅ Gemini 2.5 Flash via `google-genai` SDK (preferred — free tier)
+- ✅ OpenAI via `openai` SDK (fallback)
+- ✅ PII stripping before any cloud call
+- ✅ Every escalation logged with reason, provider, latency
+- ✅ Policy-gated: only triggers on low confidence, long reasoning, or explicit user request
 
 ## Android On-Device Inference
 
