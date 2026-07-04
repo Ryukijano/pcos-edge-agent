@@ -126,22 +126,30 @@ class LiteRTManager(private val context: Context) {
     }
 
     private fun isNpuAvailable(): Boolean {
-        // NPU requires Snapdragon 8 Gen 2+ (SM8550+) and QAIRT libraries
+        // NPU requires Snapdragon 8 Gen 1+ (SM8450+) and QAIRT libraries
+        // Supported SoCs: SM8450 (8 Gen 1), SM8475 (8+ Gen 1), SM8550 (8 Gen 2),
+        //                 SM8650 (8 Gen 3), SM8750 (8 Elite), SM8850 (8 Elite Gen 5)
         val soc = Build.SOC_MANUFACTURER?.lowercase() ?: ""
         val model = Build.SOC_MODEL?.lowercase() ?: ""
         val hardware = Build.HARDWARE.lowercase()
-        return (soc.contains("qcom") || soc.contains("qualcomm")) &&
-               (model.contains("sm8550") || model.contains("sm8650") || model.contains("sm8750") ||
-                model.contains("samsung") || hardware.contains("qcom"))
+        val supportedSnapdragon = setOf("sm8450", "sm8475", "sm8550", "sm8650", "sm8750", "sm8850")
+        val isQualcomm = soc.contains("qcom") || soc.contains("qualcomm") || hardware.contains("qcom")
+        val isSupportedModel = supportedSnapdragon.any { model.contains(it) }
+        // Also check for Samsung Exynos with NPU
+        val isSamsungNpu = model.contains("samsung") && hardware.contains("exynos")
+        return (isQualcomm && isSupportedModel) || isSamsungNpu
     }
 
     private fun isGpuAvailable(): Boolean {
         // Adreno 730+ (Snapdragon 8 Gen 1+) supports OpenCL via LiteRT-LM
+        // Also Apple A14+ (Metal), Mali-G78+, Xclipse 920
         val model = Build.SOC_MODEL?.lowercase() ?: ""
         val hardware = Build.HARDWARE.lowercase()
-        return model.contains("sm8450") || model.contains("sm8550") || model.contains("sm8650") ||
-               model.contains("sm8750") || model.contains("samsung") ||
-               hardware.contains("qcom") || hardware.contains("adreno")
+        val supportedGpu = setOf("sm8450", "sm8475", "sm8550", "sm8650", "sm8750", "sm8850")
+        return supportedGpu.any { model.contains(it) } ||
+               model.contains("samsung") ||
+               hardware.contains("qcom") || hardware.contains("adreno") ||
+               hardware.contains("mali") || hardware.contains("xclipse")
     }
 
     /** Get the best available backend for a model, with fallback. */
@@ -249,6 +257,38 @@ class LiteRTManager(private val context: Context) {
     /** Get the LoRA adapter for a task type, if available. */
     fun getLoraAdapterForTask(taskType: String): LoraAdapter? {
         return loraAdapters[taskType]
+    }
+
+    /**
+     * Load a LoRA adapter for the current model.
+     *
+     * NOTE: The LiteRT-LM Kotlin API does not yet expose LoRA loading directly.
+     * The C++ API uses LoraManager::LoadLoRA(lora_id, model_assets) followed by
+     * LoraManager::UseLoRA(lora_id) to activate the adapter.
+     *
+     * When the Kotlin API exposes ConversationConfig(loraPath = "...") or similar,
+     * this function will load the adapter file and pass it to the conversation.
+     *
+     * In the meantime, this ensures the adapter file is downloaded and ready.
+     */
+    suspend fun loadLoraAdapter(adapter: LoraAdapter): Boolean = withContext(Dispatchers.IO) {
+        if (!ensureLoraDownloaded(adapter)) {
+            Log.w(TAG, "LoRA adapter download failed: ${adapter.name}")
+            return@withContext false
+        }
+        activeLoraAdapter = adapter
+        Log.i(TAG, "LoRA adapter ready: ${adapter.name} (rank=${adapter.rank})")
+        // TODO: When Kotlin API supports LoRA:
+        // 1. Re-create conversation with ConversationConfig(loraPath = adapterPath)
+        // 2. Or use engine.loraManager?.loadLoRA(adapterPath) if exposed
+        true
+    }
+
+    /** Unload the current LoRA adapter. */
+    fun unloadLoraAdapter() {
+        activeLoraAdapter = null
+        Log.i(TAG, "LoRA adapter unloaded")
+        // TODO: Re-create conversation without LoRA when API supports it
     }
 
     /** Download a LoRA adapter file if not already cached. */
@@ -507,6 +547,94 @@ class LiteRTManager(private val context: Context) {
         conversation = null
         engine = null
         currentModel = null
+    }
+
+    // ── Multimodal Inference (E4B only) ───────────────────────────
+
+    /**
+     * Run inference with an image input (E4B multimodal).
+     * The model processes the image alongside the text prompt.
+     *
+     * @param prompt Text prompt describing what to do with the image
+     * @param imageBytes Raw image bytes (JPEG/PNG)
+     * @return Generated text response
+     */
+    suspend fun inferWithImage(prompt: String, imageBytes: ByteArray): String = withContext(Dispatchers.IO) {
+        val eng = engine ?: return@withContext "[Model not loaded]"
+        val config = modelConfigs[currentModel] ?: return@withContext "[No model config]"
+
+        if (config.visionBackend == null) {
+            return@withContext "[Vision not supported on current model. Use E4B.]"
+        }
+
+        try {
+            val convConfig = ConversationConfig(
+                systemInstruction = config.systemInstruction,
+                samplerConfig = SamplerConfig(topK = 10, topP = 0.95, temperature = 0.8),
+            )
+            eng.createConversation(convConfig).use { conv ->
+                val contents = Contents.of(
+                    text = prompt,
+                    images = listOf(imageBytes),
+                )
+                val response = conv.sendMessage(contents)
+                response.text
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Multimodal image inference failed", e)
+            "[Error: ${e.message}]"
+        }
+    }
+
+    /**
+     * Run streaming inference with an image input (E4B multimodal).
+     */
+    suspend fun inferStreamingWithImage(
+        prompt: String,
+        imageBytes: ByteArray,
+        onChunk: (String) -> Unit,
+    ): String = withContext(Dispatchers.IO) {
+        val eng = engine ?: return@withContext "[Model not loaded]"
+        val config = modelConfigs[currentModel] ?: return@withContext "[No model config]"
+
+        if (config.visionBackend == null) {
+            return@withContext "[Vision not supported on current model. Use E4B.]"
+        }
+
+        try {
+            val convConfig = ConversationConfig(
+                systemInstruction = config.systemInstruction,
+                samplerConfig = SamplerConfig(topK = 10, topP = 0.95, temperature = 0.8),
+            )
+            val result = StringBuilder()
+            eng.createConversation(convConfig).use { conv ->
+                val contents = Contents.of(
+                    text = prompt,
+                    images = listOf(imageBytes),
+                )
+                conv.sendMessageAsync(contents).collect { message ->
+                    val text = message.toString()
+                    result.append(text)
+                    onChunk(text)
+                }
+            }
+            result.toString()
+        } catch (e: Exception) {
+            Log.e(TAG, "Streaming multimodal inference failed", e)
+            "[Error: ${e.message}]"
+        }
+    }
+
+    /** Check if the current model supports vision inputs. */
+    fun isVisionSupported(): Boolean {
+        val config = modelConfigs[currentModel] ?: return false
+        return config.visionBackend != null
+    }
+
+    /** Check if the current model supports audio inputs. */
+    fun isAudioSupported(): Boolean {
+        val config = modelConfigs[currentModel] ?: return false
+        return config.audioBackend != null
     }
 }
 

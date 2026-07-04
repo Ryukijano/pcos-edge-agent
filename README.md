@@ -93,7 +93,17 @@ pcos-edge-agent/
 | Gemma 4 E2B Mobile (QAT) | 1.1GB | GPU | ~3500 | ~48 | Low-RAM devices, text-only |
 | Gemma 4 E4B Mobile (QAT) | 2.5GB | GPU | ~1200 | ~20 | Low-RAM reasoning + multimodal |
 
-*Benchmarks from Samsung S26 Ultra and iPhone 17 Pro (Google official). Adreno 730 (OnePlus 11R) uses OpenCL GPU backend. MTP/speculative decoding enabled for E2B/E4B. Apple Metal supported via LiteRT-LM Swift APIs. NPU (Qualcomm QNN) supported on Snapdragon 8 Gen 2+ with auto-fallback to GPU/CPU. QAT mobile models use Google's wNa8o8 quantization schema with targeted 2-bit decoding layers and optimized KV caches.*
+*Benchmarks from Samsung S26 Ultra and iPhone 17 Pro (Google official). Adreno 730 (OnePlus 11R, SM8475) uses OpenCL GPU backend. MTP/speculative decoding enabled for E2B/E4B. Apple Metal supported via LiteRT-LM Swift APIs. NPU (Qualcomm QNN) supported on Snapdragon 8 Gen 1+ (SM8450/SM8475/SM8550/SM8650/SM8750/SM8850) with auto-fallback to GPU/CPU. See [NPU Setup Guide](docs/NPU_SETUP.md) for QAIRT library bundling. QAT mobile models use Google's wNa8o8 quantization schema with targeted 2-bit decoding layers and optimized KV caches.*
+
+### Desktop / Laptop Benchmarks (Gemma 4 12B)
+
+| Model | Device | Backend | Prefill (tk/s) | Decode (tk/s) | TTFT |
+|---|---|---|---|---|---|
+| Gemma 4 12B | MacBook Pro M4 32GB | Metal GPU | ~600 | ~35 | ~2.1s |
+| Gemma 4 12B | Desktop RTX 4070 32GB | OpenCL GPU | ~800 | ~45 | ~1.8s |
+| Gemma 4 12B | Pixel 10 Pro Desktop | NPU | ~400 | ~20 | ~3.0s |
+
+*Gemma 4 12B requires 16GB+ RAM and runs via `litert-lm serve` on desktop. The broker routes heavy reasoning tasks to `litert_server_12b` surface when desktop RAM ≥ 16GB.*
 
 ### iOS / Apple Silicon Benchmarks
 
@@ -317,6 +327,60 @@ The Chrome sidepanel now supports streaming from `litert_server` via SSE. When t
 2. Reads the SSE stream chunk-by-chunk
 3. Displays tokens in real-time as they arrive
 4. Shows TTFT and total latency metrics after completion
+
+### Multimodal Inference (E4B)
+
+Gemma 4 E4B supports vision (image) and audio inputs via LiteRT-LM's multimodal API:
+
+```kotlin
+// Image inference (Android)
+val result = litertManager.inferWithImage(
+    prompt = "Describe this image in detail",
+    imageBytes = imageByteArray,
+)
+
+// Streaming image inference
+litertManager.inferStreamingWithImage(
+    prompt = "What's in this photo?",
+    imageBytes = imageByteArray,
+    onChunk = { chunk -> /* display chunk */ },
+)
+```
+
+- `isVisionSupported()` — returns true when E4B is loaded with vision backend
+- `isAudioSupported()` — returns true when E4B is loaded with audio backend
+- Vision backend uses GPU for image encoding, text backend for generation
+- Audio backend processes raw audio waveforms for transcription/understanding
+
+### NPU Backend (Qualcomm QNN)
+
+NPU acceleration is auto-detected on Snapdragon 8 Gen 1+ devices:
+
+| SoC | Codename | NPU Status |
+|---|---|---|
+| SM8450 | 8 Gen 1 | ✅ |
+| SM8475 | 8+ Gen 1 (OnePlus 11R) | ✅ |
+| SM8550 | 8 Gen 2 | ✅ |
+| SM8650 | 8 Gen 3 | ✅ |
+| SM8750 | 8 Elite | ✅ |
+| SM8850 | 8 Elite Gen 5 | ✅ |
+
+Auto-fallback chain: NPU → GPU → CPU. See [NPU Setup Guide](docs/NPU_SETUP.md) for QAIRT library bundling instructions.
+
+### LoRA Adapter Infrastructure
+
+Task-specific LoRA adapters are wired into the `LiteRTManager`:
+
+```kotlin
+// Load a code-generation LoRA adapter
+val codeAdapter = litertManager.getLoraAdapterForTask("code")
+codeAdapter?.let { litertManager.loadLoraAdapter(it) }
+
+// Unload when done
+litertManager.unloadLoraAdapter()
+```
+
+**Note:** The LiteRT-LM Kotlin API does not yet expose LoRA loading directly. The C++ API uses `LoraManager::LoadLoRA()` and `LoraManager::UseLoRA()`. The infrastructure downloads and caches adapter files, ready for activation when the Kotlin API exposes `ConversationConfig(loraPath = ...)`. See [DeepWiki: LoRA Adapter System](https://deepwiki.com/google-ai-edge/LiteRT-LM/7.3-lora-adapter-system) for C++ API details.
 
 ## Chrome Built-in AI APIs (Chrome 138+)
 

@@ -33,6 +33,12 @@ _SYSTEM_PROMPTS = {
         "You have more compute and memory than mobile devices. "
         "Provide thorough, well-structured answers."
     ),
+    Surface.LITERT_SERVER_12B: (
+        "You are a powerful on-device assistant running Gemma 4 12B on a local LiteRT-LM server. "
+        "You have significant compute and memory available. "
+        "Provide thorough, well-reasoned answers with step-by-step thinking when appropriate. "
+        "You can handle complex reasoning, code generation, and multimodal inputs."
+    ),
     Surface.ANDROID_FUNCTION_GEMMA: (
         "You are an on-device assistant. Use the provided tools when action is needed. "
         "Keep responses concise. Never reveal private data externally."

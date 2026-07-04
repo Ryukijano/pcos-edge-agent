@@ -24,6 +24,7 @@ class Surface(str, Enum):
     IOS_GEMMA_E2B = "ios_litert_gemma_e2b"
     IOS_GEMMA_E4B = "ios_litert_gemma_e4b"
     LITERT_SERVER = "litert_server"
+    LITERT_SERVER_12B = "litert_server_12b"
     PIECESOS_MEMORY = "piecesos_memory_then_local"
     CLOUD_LLM = "cloud_llm_escalation"
 
@@ -156,6 +157,15 @@ def route(task: TaskObject, context: Optional[PCOSContext] = None) -> RoutingDec
     #    This runs Gemma 4 12B/31B on desktop with GPU, avoiding cloud entirely
     if task.exceeds_local_limits or (task.task_type == TaskType.REASONING and not task.is_short):
         if ctx and ctx.desktop and ctx.desktop.litert_server_available:
+            # Use 12B for heavy reasoning if desktop has enough RAM (16GB+)
+            desktop_ram = getattr(ctx.desktop, 'total_ram_mb', 0) or 0
+            if desktop_ram >= 16384 and task.task_type == TaskType.REASONING:
+                return RoutingDecision(
+                    surface=Surface.LITERT_SERVER_12B,
+                    reason="Heavy reasoning: Gemma 4 12B on local LiteRT-LM server (desktop GPU, 16GB+ RAM)",
+                    context_payload=_build_payload(ctx, task, strip_private=task.sensitivity == Sensitivity.PRIVATE),
+                    latency_target_ms=3000,
+                )
             return RoutingDecision(
                 surface=Surface.LITERT_SERVER,
                 reason="Long reasoning: local LiteRT-LM server (lit serve) with desktop GPU",

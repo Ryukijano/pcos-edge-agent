@@ -92,6 +92,8 @@ class DesktopContext(BaseModel):
     has_gpu: bool = False
     gpu_name: str = ""
     os_type: str = ""  # linux | macos | windows
+    total_ram_mb: int = 0  # System RAM for model selection (12B needs 16GB+)
+    has_12b_model: bool = False  # Whether gemma-4-12B is imported in lit serve
 
 
 class IOSContext(BaseModel):

@@ -208,7 +208,7 @@ async def litert_server_infer(prompt: str, system_prompt: str = "", model_id: st
 
     Uses the OpenAI-compatible /v1/chat/completions endpoint.
     The model field supports: model_id[,backend][,max_tokens]
-    Example: "gemma4-e2b,gpu,4096"
+    Example: "gemma4-e2b,gpu,4096" or "gemma4-12b,gpu,8192"
     """
     import httpx
     server_url = _settings.litert_server_url if hasattr(_settings, 'litert_server_url') else "http://localhost:9379"
