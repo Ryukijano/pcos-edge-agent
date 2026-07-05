@@ -5,10 +5,14 @@ This connector queries for relevant memories given a task description
 and returns top-k ranked items to the Context Broker.
 
 Default mode: local-only. PiecesOS is optional — broker degrades gracefully.
+
+PII stripping is applied to all LTM results before they can flow into
+cloud escalation paths, ensuring workflow memory never leaks sensitive data.
 """
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 import httpx
@@ -17,7 +21,7 @@ log = logging.getLogger("pcos.pieces")
 
 
 # PiecesOS default local port (39300 is the PiecesOS Suite default)
-PIECES_MCP_BASE = "http://localhost:39300"
+PIECES_MCP_BASE = os.getenv("PCOS_PIECES_MCP_URL", "http://localhost:39300")
 PIECES_SSE_ENDPOINT = "/model_context_protocol/2024-11-05/sse"
 PIECES_QUERY_ENDPOINT = "/model_context_protocol/2025-03-26/mcp"
 PIECES_HEALTH_ENDPOINT = "/.well-known/version"
@@ -206,10 +210,18 @@ class PiecesConnector:
         return [item.get("content", "") for item in items if item.get("content")]
 
     def _parse_item(self, raw: dict) -> dict:
-        """Parse a raw PiecesOS result into a normalized dict."""
+        """Parse a raw PiecesOS result into a normalized dict.
+
+        Applies PII stripping to content and title fields to ensure
+        workflow memory never leaks sensitive data into cloud escalation.
+        """
+        from broker.policies.privacy import strip_pii
+
+        content = raw.get("content", raw.get("text", ""))
+        title = raw.get("title", raw.get("name", ""))
         return {
-            "content": raw.get("content", raw.get("text", "")),
-            "title": raw.get("title", raw.get("name", "")),
+            "content": strip_pii(content) if isinstance(content, str) else content,
+            "title": strip_pii(title) if isinstance(title, str) else title,
             "source": raw.get("source", raw.get("application", "")),
             "timestamp": raw.get("timestamp", raw.get("created", "")),
             "score": raw.get("score", raw.get("relevance", 0.0)),

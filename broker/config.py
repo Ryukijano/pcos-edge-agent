@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     piecesos_host: str = "localhost"
     piecesos_port: int = 39300
     piecesos_enabled: bool = True
+    pieces_mcp_url: str = "http://localhost:39300"
 
     # ── Bridge auth ───────────────────────────────────────────────
     bridge_auth_token: str = ""

@@ -63,7 +63,17 @@ async def route_task(req: RouteRequest):
     task = TaskObject(**req.task)
     ctx = PCOSContext(**req.context) if req.context else PCOSContext()
     start = time.perf_counter()
-    decision = route(task, ctx)
+    # Enrich context with PiecesOS LTM results before routing
+    if task.requires_personal_context:
+        ltm_hits = await _pieces_connector.query_async(task.text, top_k=5)
+        if ltm_hits:
+            ctx.memory.piecesos_hits = ltm_hits
+            decision = route(task, ctx)
+            decision.context_payload["ltm_results"] = ltm_hits
+        else:
+            decision = route(task, ctx)
+    else:
+        decision = route(task, ctx)
     elapsed_ms = (time.perf_counter() - start) * 1000
 
     sv = _surface_val(decision)
@@ -176,6 +186,18 @@ async def execute_task(req: ExecuteRequest):
         ),
         plan=plan.model_dump(),
     )
+
+
+@router.get("/memory/query")
+async def memory_query(q: str, top_k: int = 5):
+    """Query PiecesOS LTM via MCP.
+
+    Returns relevant workflow memories (code snippets, chats, links)
+    from the local PiecesOS Long-Term Memory engine. All results are
+    PII-stripped before returning.
+    """
+    results = await _pieces_connector.query_async(q, top_k=top_k)
+    return {"query": q, "results": results, "count": len(results)}
 
 
 @router.post("/context/compress")
