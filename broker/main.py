@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
     _log.info("broker_shutdown")
 
 
-app = FastAPI(title="PCOS Context Broker", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="PCOS Context Broker", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

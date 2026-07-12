@@ -17,7 +17,9 @@ COPY tests/ ./tests/
 # Environment defaults (override at runtime)
 ENV PCOS_BROKER_HOST=0.0.0.0
 ENV PCOS_BROKER_PORT=8000
-ENV PCOS_CORS_ORIGINS=["*"]
+ENV PCOS_CORS_ORIGINS=["http://localhost:8000","http://localhost:7860"]
+ENV PCOS_BRIDGE_AUTH_REQUIRED=false
+ENV PCOS_BRIDGE_AUTH_TOKEN=
 ENV PCOS_DB_PATH=/data/pcos_metrics.db
 
 # Create data directory for SQLite metrics

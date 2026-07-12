@@ -9,11 +9,12 @@ PCOS uses `pydantic-settings` for environment-driven configuration. All settings
 | `PCOS_BROKER_HOST` | `0.0.0.0` | Broker listen host |
 | `PCOS_BROKER_PORT` | `8000` | Broker listen port |
 | `PCOS_BROKER_LOG_LEVEL` | `info` | Uvicorn log level |
-| `PCOS_CORS_ORIGINS` | `["*"]` | CORS allowed origins (JSON array) |
+| `PCOS_CORS_ORIGINS` | `["http://localhost:8000", "http://localhost:7860"]` | CORS allowed origins (JSON array); use explicit deployed origins in production |
 | `PCOS_PIECESOS_HOST` | `localhost` | PiecesOS MCP host |
 | `PCOS_PIECESOS_PORT` | `39300` | PiecesOS MCP port |
 | `PCOS_PIECESOS_ENABLED` | `true` | Enable PiecesOS connector |
 | `PCOS_BRIDGE_AUTH_TOKEN` | (empty) | WebSocket bridge auth token |
+| `PCOS_BRIDGE_AUTH_REQUIRED` | `false` | Require a non-empty bridge token for WebSocket registration |
 | `PCOS_LOG_LEVEL` | `INFO` | Logging level |
 | `PCOS_LOG_JSON` | `true` | Structured JSON logging |
 | `PCOS_LOG_REQUEST_BODIES` | `false` | Log request bodies |

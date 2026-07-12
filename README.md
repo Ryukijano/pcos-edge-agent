@@ -1,6 +1,12 @@
 # PCOS — Personal Context Operating System
 
+[![Release](https://img.shields.io/badge/release-v1.0.0-4c8bf5.svg)](https://github.com/Ryukijano/pcos-edge-agent/releases/tag/v1.0.0) [![Tests](https://img.shields.io/badge/tests-235%20passed-2ea44f.svg)](https://github.com/Ryukijano/pcos-edge-agent/actions)
+
 > A local-first hybrid AI runtime across Chrome, Android, Pixel Watch, PiecesOS, and cloud LLMs.
+
+**v1.0.0 release highlights:** secure policy-gated routing, Gemma 4/LiteRT-LM edge inference, Qualcomm NPU auto-download, Android/iOS multimodal E4B, PiecesOS memory, desktop 12B automation, Chrome streaming, and a 235-test regression/E2E suite.
+
+See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/SECURITY_AUDIT_v1.0.md`](docs/SECURITY_AUDIT_v1.0.md) for release details and audit evidence.
 
 ## What is this?
 

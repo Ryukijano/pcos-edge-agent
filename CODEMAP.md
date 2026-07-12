@@ -276,9 +276,10 @@ route(task, ctx)
 | Variable | Default | Module |
 |----------|---------|--------|
 | `PCOS_BROKER_PORT` | `8000` | `config.py` |
-| `PCOS_CORS_ORIGINS` | `["*"]` | `config.py` → `main.py` |
+| `PCOS_CORS_ORIGINS` | local origins | `config.py` → `main.py` |
 | `PCOS_PIECESOS_PORT` | `39300` | `config.py` → `connector.py` |
 | `PCOS_BRIDGE_AUTH_TOKEN` | (empty) | `config.py` → `bridge_router.py` |
+| `PCOS_BRIDGE_AUTH_REQUIRED` | `false` | `config.py` → `bridge_router.py` |
 | `PCOS_LOG_JSON` | `true` | `config.py` → `logging.py` |
 | `PCOS_LATENCY_TARGET_ROUTE_MS` | `50` | `config.py` → `ops_router.py` |
 

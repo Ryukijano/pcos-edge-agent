@@ -14,6 +14,7 @@ _settings = get_settings()
 _log = get_logger("broker.bridge")
 
 _BRIDGE_AUTH_TOKEN = _settings.bridge_auth_token
+_BRIDGE_AUTH_REQUIRED = _settings.bridge_auth_required
 
 
 @router.websocket("/bridge")
@@ -38,7 +39,12 @@ async def bridge(ws: WebSocket):
             if msg_type == "register":
                 role = msg.get("role", "unknown")
 
-                if _BRIDGE_AUTH_TOKEN:
+                if _BRIDGE_AUTH_REQUIRED and not _BRIDGE_AUTH_TOKEN:
+                    await ws.send_json({"type": "error", "message": "Bridge authentication is misconfigured"})
+                    await ws.close(code=4002)
+                    return
+
+                if _BRIDGE_AUTH_REQUIRED or _BRIDGE_AUTH_TOKEN:
                     token = msg.get("token", "")
                     if token != _BRIDGE_AUTH_TOKEN:
                         await ws.send_json({"type": "error", "message": "Invalid auth token"})

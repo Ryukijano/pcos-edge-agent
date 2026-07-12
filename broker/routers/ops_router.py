@@ -25,7 +25,7 @@ async def health():
     return {
         "status": "ok" if all_ok else "degraded",
         "service": "pcos-context-broker",
-        "version": "0.3.0",
+        "version": "1.0.0",
         "dependencies": {
             "piecesos": piecesos_ok,
             "database": db_ok,

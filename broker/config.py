@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     broker_log_level: str = "info"
 
     # ── CORS ──────────────────────────────────────────────────────
-    cors_origins: list[str] = ["*"]
+    cors_origins: list[str] = ["http://localhost:8000", "http://localhost:7860"]
 
     # ── PiecesOS ──────────────────────────────────────────────────
     piecesos_host: str = "localhost"
@@ -40,6 +40,7 @@ class Settings(BaseSettings):
 
     # ── Bridge auth ───────────────────────────────────────────────
     bridge_auth_token: str = ""
+    bridge_auth_required: bool = False
 
     # ── Latency budgets (ms) ──────────────────────────────────────
     latency_target_route_ms: int = 50

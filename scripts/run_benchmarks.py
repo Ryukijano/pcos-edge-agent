@@ -237,6 +237,11 @@ def main():
     parser.add_argument("--decode-tokens", type=int, default=256)
     parser.add_argument("--android", action="store_true", help="Run on Android via ADB")
     parser.add_argument("--output", type=str, help="Save results as JSON to this path")
+    parser.add_argument(
+        "--allow-unavailable",
+        action="store_true",
+        help="Write unavailable results without failing (use for portable release metadata)",
+    )
     args = parser.parse_args()
 
     models = MODEL_REGISTRY.keys() if "all" in args.model else args.model
@@ -254,12 +259,14 @@ def main():
     print_report(results)
 
     if args.output:
-        Path(args.output).write_text(
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
             json.dumps([r.to_dict() for r in results], indent=2)
         )
         print(f"\nResults saved to {args.output}")
 
-    if any(not r.success for r in results):
+    if any(not r.success for r in results) and not args.allow_unavailable:
         sys.exit(1)
 
 

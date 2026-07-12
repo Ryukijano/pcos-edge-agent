@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PCOS Context Router",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Local-first hybrid AI runtime — routes tasks to Chrome Built-in AI, Android LiteRT-LM, or cloud with privacy-first policies.",
   "permissions": [
     "sidePanel",
@@ -13,7 +13,6 @@
     "offscreen"
   ],
   "host_permissions": [
-    "<all_urls>",
     "http://localhost:8000/*",
     "ws://localhost:8000/*"
   ],

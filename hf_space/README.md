@@ -7,6 +7,8 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: apache-2.0
+custom:
+  release: v1.0.0
 tags:
   - ai
   - routing
@@ -16,7 +18,7 @@ tags:
   - gemini
 ---
 
-# PCOS Context Broker Demo
+# PCOS Context Broker Demo (v1.0.0)
 
 Interactive demo of the **Personal Context Operating System** — a local-first hybrid AI runtime that routes tasks across Chrome Built-in AI, Android LiteRT-LM, PiecesOS memory, and cloud LLMs (Gemini/OpenAI).
 
