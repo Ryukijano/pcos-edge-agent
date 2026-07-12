@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     piecesos_enabled: bool = True
     pieces_mcp_url: str = "http://localhost:39300"
 
+    # ── LiteRT-LM Server (desktop) ────────────────────────────────
+    litert_server_url: str = "http://localhost:9379"
+    litert_server_12b_model_id: str = "gemma4-12b"
+    litert_server_default_model_id: str = "gemma4-e2b"
+
     # ── Bridge auth ───────────────────────────────────────────────
     bridge_auth_token: str = ""
 
