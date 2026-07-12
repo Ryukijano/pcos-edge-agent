@@ -89,8 +89,61 @@ NPU models are SoC-specific. Download the correct variant from HuggingFace:
 
 - `gemma-4-E2B-it_q4_ekv1280_sm8550.litertlm` (for SM8550)
 - `gemma-4-E2B-it_q4_ekv1280_sm8650.litertlm` (for SM8650)
+- `gemma-4-E2B-it_q4_ekv1280_sm8750.litertlm` (for SM8750)
+- `gemma-4-E2B-it_q4_ekv1280_sm8850.litertlm` (for SM8850)
 
 The model file name encodes the SoC. Using the wrong SoC variant will fail at runtime.
+
+### SoC Compatibility Mapping
+
+Older SoCs use a compatible DSP variant from newer chips:
+
+| Device SoC | NPU Model Suffix | Reason |
+|---|---|---|
+| SM8450 (8 Gen 1) | `sm8550` | Compatible DSP architecture |
+| SM8475 (8+ Gen 1) | `sm8550` | Compatible DSP architecture |
+| SM8550 (8 Gen 2) | `sm8550` | Native |
+| SM8650 (8 Gen 3) | `sm8650` | Native |
+| SM8750 (8 Elite) | `sm8750` | Native |
+| SM8850 (8 Elite Gen 5) | `sm8850` | Native |
+
+## Auto-Download (M22)
+
+`LiteRTManager` automatically detects the SoC and downloads the correct NPU model variant.
+
+### How It Works
+
+1. **SoC Detection**: `detectSoCModel()` reads `Build.SOC_MODEL` (Android 12+) or falls back to `getprop ro.soc.model`
+2. **QAIRT Check**: `isQairtAvailable()` checks for `libQnnHtp.so` and `libQnnHtpPrepare.so` in `nativeLibraryDir`
+3. **NPU Model Selection**: `getNpuModelFile(model)` maps SoC → NPU suffix → file name (e.g. `gemma-4-E2B-it_q4_ekv1280_sm8550.litertlm`)
+4. **Download**: `ensureModelDownloaded(model, useNpu=true)` fetches the SoC-specific variant from HuggingFace
+5. **Load**: `loadModel()` tries NPU model file first, falls back to GPU model if NPU file not present
+
+### Usage
+
+```kotlin
+val manager = LiteRTManager(context)
+
+// Check NPU availability
+if (manager.isNpuAvailable() && manager.isQairtAvailable()) {
+    val soc = manager.detectSoCModel()  // e.g. "sm8550"
+    Log.i(TAG, "NPU ready for SoC: $soc")
+
+    // Download SoC-specific NPU model
+    manager.ensureModelDownloaded(PCOSModel.GEMMA_4_E2B, useNpu = true)
+
+    // Load — automatically uses NPU variant if available
+    manager.loadModel(PCOSModel.GEMMA_4_E2B)
+}
+```
+
+### Fallback Chain
+
+```
+NPU model (SoC-specific) → GPU model (standard) → CPU model (fallback)
+```
+
+If the NPU variant download fails or the file is corrupt, the app automatically falls back to the standard GPU model. If NPU init fails at runtime, LiteRT-LM falls back to GPU → CPU.
 
 ## Troubleshooting
 

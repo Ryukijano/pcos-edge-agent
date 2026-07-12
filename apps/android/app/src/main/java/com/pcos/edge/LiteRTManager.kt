@@ -40,6 +40,27 @@ class LiteRTManager(private val context: Context) {
     companion object {
         private const val TAG = "PCOS-LiteRT"
         private const val MODELS_DIR = "models"
+
+        /** SoC → NPU model suffix mapping.
+         *
+         *  NPU models are SoC-specific. File naming convention:
+         *  `Model_q4_ekv1280_{SOC_SUFFIX}.litertlm`
+         *
+         *  Some older SoCs use a compatible DSP variant:
+         *  - SM8450 (8 Gen 1) → uses SM8550 variant (compatible DSP)
+         *  - SM8475 (8+ Gen 1) → uses SM8550 variant (compatible DSP)
+         */
+        private val SOC_TO_NPU_SUFFIX = mapOf(
+            "sm8450" to "sm8550",   // 8 Gen 1 → compatible with 8 Gen 2 DSP
+            "sm8475" to "sm8550",   // 8+ Gen 1 → compatible with 8 Gen 2 DSP
+            "sm8550" to "sm8550",   // 8 Gen 2
+            "sm8650" to "sm8650",   // 8 Gen 3
+            "sm8750" to "sm8750",   // 8 Elite
+            "sm8850" to "sm8850",   // 8 Elite Gen 5
+        )
+
+        /** HuggingFace repo for NPU model variants. */
+        private const val NPU_HF_REPO = "litert-community/gemma-4-E2B-it-litert-lm"
     }
 
     /** Device RAM tier for model selection. */
@@ -138,6 +159,77 @@ class LiteRTManager(private val context: Context) {
         // Also check for Samsung Exynos with NPU
         val isSamsungNpu = model.contains("samsung") && hardware.contains("exynos")
         return (isQualcomm && isSupportedModel) || isSamsungNpu
+    }
+
+    /** Check if QAIRT (Qualcomm AI Runtime) libraries are available.
+     *
+     *  Looks for libQnnHtp.so in the app's nativeLibraryDir.
+     *  This is the key shared library for Qualcomm NPU inference.
+     */
+    fun isQairtAvailable(): Boolean {
+        val nativeDir = context.applicationInfo.nativeLibraryDir
+        val qnnHtp = File(nativeDir, "libQnnHtp.so")
+        val qnnHtpPrepare = File(nativeDir, "libQnnHtpPrepare.so")
+        return qnnHtp.exists() && qnnHtpPrepare.exists()
+    }
+
+    /** Detect the SoC model string (e.g. "sm8550").
+     *
+     *  Uses Build.SOC_MODEL on Android 12+, falls back to reading
+     *  ro.soc.model property on older devices.
+     */
+    fun detectSoCModel(): String {
+        val socModel = Build.SOC_MODEL?.lowercase()?.trim() ?: ""
+        if (socModel.isNotEmpty()) return socModel
+
+        // Fallback: read system property
+        try {
+            val process = ProcessBuilder("getprop", "ro.soc.model").start()
+            val result = process.inputStream.bufferedReader().readText().trim().lowercase()
+            if (result.isNotEmpty()) return result
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not read ro.soc.model", e)
+        }
+        return ""
+    }
+
+    /** Get the NPU-specific model file for a given base model.
+     *
+     *  NPU models use the naming convention:
+     *  `gemma-4-E2B-it_q4_ekv1280_{soc_suffix}.litertlm`
+     *
+     *  Returns null if the SoC is not in the supported mapping.
+     */
+    fun getNpuModelFile(model: PCOSModel): File? {
+        val soc = detectSoCModel()
+        val suffix = SOC_TO_NPU_SUFFIX[soc] ?: return null
+
+        val baseName = when (model) {
+            PCOSModel.GEMMA_4_E2B, PCOSModel.GEMMA_4_E2B_MOBILE -> "gemma-4-E2B-it"
+            PCOSModel.GEMMA_4_E4B, PCOSModel.GEMMA_4_E4B_MOBILE -> "gemma-4-E4B-it"
+            else -> return null  // FunctionGemma doesn't have NPU variants
+        }
+
+        val npuFileName = "${baseName}_q4_ekv1280_${suffix}.litertlm"
+        return File(getModelDir(), npuFileName)
+    }
+
+    /** Get the HuggingFace download URL for an NPU-specific model variant.
+     *
+     *  Returns null if the SoC is not supported.
+     */
+    fun getNpuModelUrl(model: PCOSModel): String? {
+        val soc = detectSoCModel()
+        val suffix = SOC_TO_NPU_SUFFIX[soc] ?: return null
+
+        val baseName = when (model) {
+            PCOSModel.GEMMA_4_E2B, PCOSModel.GEMMA_4_E2B_MOBILE -> "gemma-4-E2B-it"
+            PCOSModel.GEMMA_4_E4B, PCOSModel.GEMMA_4_E4B_MOBILE -> "gemma-4-E4B-it"
+            else -> return null
+        }
+
+        val fileName = "${baseName}_q4_ekv1280_${suffix}.litertlm"
+        return "https://huggingface.co/$NPU_HF_REPO/resolve/main/$fileName"
     }
 
     private fun isGpuAvailable(): Boolean {
@@ -329,32 +421,62 @@ class LiteRTManager(private val context: Context) {
      * Download a model file if not already present.
      * Returns true if the file exists after this call.
      */
-    suspend fun ensureModelDownloaded(model: PCOSModel): Boolean = withContext(Dispatchers.IO) {
+    suspend fun ensureModelDownloaded(model: PCOSModel, useNpu: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+        // If NPU is requested, try to download the SoC-specific NPU variant first
+        if (useNpu && isNpuAvailable()) {
+            val npuFile = getNpuModelFile(model)
+            val npuUrl = getNpuModelUrl(model)
+            if (npuFile != null && npuUrl != null) {
+                if (npuFile.exists() && npuFile.length() > 0) return@withContext true
+                Log.i(TAG, "Downloading NPU variant: ${npuFile.name} (SoC: ${detectSoCModel()})…")
+                if (downloadFile(npuUrl, npuFile)) {
+                    Log.i(TAG, "NPU model downloaded: ${npuFile.name} (${npuFile.length() / 1024 / 1024}MB)")
+                    return@withContext true
+                }
+                Log.w(TAG, "NPU variant download failed, falling back to GPU model")
+            }
+        }
+
+        // Standard GPU/CPU model download
         val file = getModelFile(model)
         if (file.exists() && file.length() > 0) return@withContext true
 
         val config = modelConfigs[model] ?: return@withContext false
         try {
             Log.i(TAG, "Downloading ${config.fileName} from HuggingFace…")
-            val connection = java.net.URL(config.hfUrl).openConnection() as java.net.HttpURLConnection
+            if (downloadFile(config.hfUrl, file)) {
+                Log.i(TAG, "Downloaded ${config.fileName} (${file.length() / 1024 / 1024}MB)")
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Model download failed", e)
+            false
+        }
+    }
+
+    /** Download a file from a URL to a local path with atomic rename. */
+    private fun downloadFile(url: String, dest: File): Boolean {
+        try {
+            val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
             connection.connectTimeout = 10_000
             connection.readTimeout = 300_000  // 5 min for large models
             if (connection.responseCode != 200) {
-                Log.e(TAG, "Download failed: HTTP ${connection.responseCode}")
-                return@withContext false
+                Log.e(TAG, "Download failed: HTTP ${connection.responseCode} for $url")
+                return false
             }
 
-            val tmpFile = File(file.parentFile, "${file.name}.tmp")
+            val tmpFile = File(dest.parentFile, "${dest.name}.tmp")
             connection.inputStream.use { input ->
                 tmpFile.outputStream().use { output ->
                     input.copyTo(output)
                 }
             }
-            tmpFile.renameTo(file)
-            Log.i(TAG, "Downloaded ${config.fileName} (${file.length() / 1024 / 1024}MB)")
+            tmpFile.renameTo(dest)
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Model download failed", e)
+            Log.e(TAG, "Download failed for $url", e)
             false
         }
     }
@@ -367,7 +489,20 @@ class LiteRTManager(private val context: Context) {
             conversation?.close()
             engine?.close()
 
-            val file = getModelFile(model)
+            // Try NPU-specific model file first if NPU is available and QAIRT libs present
+            var file = getModelFile(model)
+            var usingNpu = false
+            if (isNpuAvailable() && isQairtAvailable()) {
+                val npuFile = getNpuModelFile(model)
+                if (npuFile != null && npuFile.exists() && npuFile.length() > 0) {
+                    Log.i(TAG, "Using NPU-specific model: ${npuFile.name} (SoC: ${detectSoCModel()})")
+                    file = npuFile
+                    usingNpu = true
+                } else {
+                    Log.i(TAG, "NPU available but model not downloaded. Call ensureModelDownloaded(model, useNpu=true)")
+                }
+            }
+
             if (!file.exists()) {
                 Log.w(TAG, "Model file not found: ${file.absolutePath}")
                 Log.w(TAG, "Call ensureModelDownloaded() first")
