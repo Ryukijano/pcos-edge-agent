@@ -57,8 +57,17 @@ class LiteRTManager: ObservableObject {
     @Published var activeBackend: String = "unknown"
     @Published var isLoaded = false
     @Published var isLoading = false
+    @Published var selectedImageData: Data? = nil
 
     private let cacheDir = NSTemporaryDirectory()
+
+    // MARK: - Model Capabilities
+
+    /// Models that support vision (image) inputs.
+    private let visionModels: Set<PCOSModel> = [.gemma4E4B, .gemma4E4BMobile]
+
+    /// Models that support audio inputs.
+    private let audioModels: Set<PCOSModel> = [.gemma4E4B, .gemma4E4BMobile]
 
     // MARK: - Device Detection
 
@@ -194,6 +203,78 @@ class LiteRTManager: ObservableObject {
             }
         }
         return result
+    }
+
+    // MARK: - Multimodal Inference
+
+    /// Check if the current model supports vision (image) inputs.
+    func isVisionSupported() -> Bool {
+        guard let model = currentModel else { return false }
+        return visionModels.contains(model)
+    }
+
+    /// Check if the current model supports audio inputs.
+    func isAudioSupported() -> Bool {
+        guard let model = currentModel else { return false }
+        return audioModels.contains(model)
+    }
+
+    /// One-shot multimodal inference with an image.
+    ///
+    /// Requires E4B model loaded (vision-capable). Returns error string if
+    /// vision is not supported on the current model.
+    func inferWithImage(prompt: String, imageData: Data) async -> String {
+        guard let conv = conversation else {
+            return "[Model not loaded]"
+        }
+        guard isVisionSupported() else {
+            return "[Vision not supported on current model. Load E4B for multimodal.]"
+        }
+
+        do {
+            let contents = Contents.of(text: prompt, images: [imageData])
+            let response = try conv.sendMessage(contents)
+            var result = ""
+            for item in response.content {
+                if item.type == .text {
+                    result += item.text
+                }
+            }
+            return result
+        } catch {
+            return "[Error: \(error.localizedDescription)]"
+        }
+    }
+
+    /// Streaming multimodal inference with an image.
+    ///
+    /// Calls onChunk for each text token as it streams. Requires E4B model.
+    func inferStreamingWithImage(
+        prompt: String, imageData: Data, onChunk: @escaping (String) -> Void
+    ) async -> String {
+        guard let conv = conversation else {
+            return "[Model not loaded]"
+        }
+        guard isVisionSupported() else {
+            return "[Vision not supported on current model. Load E4B for multimodal.]"
+        }
+
+        do {
+            let contents = Contents.of(text: prompt, images: [imageData])
+            var result = ""
+            let stream = try conv.sendMessageStreaming(contents)
+            for try await chunk in stream {
+                for item in chunk.content {
+                    if item.type == .text {
+                        result += item.text
+                        onChunk(item.text)
+                    }
+                }
+            }
+            return result
+        } catch {
+            return "[Error: \(error.localizedDescription)]"
+        }
     }
 
     /// Cancel ongoing generation.

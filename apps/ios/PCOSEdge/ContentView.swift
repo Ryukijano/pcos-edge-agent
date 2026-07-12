@@ -1,5 +1,6 @@
 import SwiftUI
 import LiteRTLM
+import PhotosUI
 
 /// Main chat view — SwiftUI interface for PCOS Edge on iOS.
 ///
@@ -17,6 +18,9 @@ struct ContentView: View {
     @State private var prefillTkSec: Float = 0
     @State private var decodeTkSec: Float = 0
     @State private var lastInferenceMs: Int = 0
+    @State private var selectedItem: PhotosPickerItem? = nil
+    @State private var selectedImage: UIImage? = nil
+    @State private var hasImageData: Data? = nil
 
     var body: some View {
         VStack(spacing: 12) {
@@ -87,6 +91,39 @@ struct ContentView: View {
                 }
             }
 
+            // PhotosPicker for multimodal input
+            if manager.isVisionSupported() {
+                HStack {
+                    PhotosPicker(selection: $selectedItem, matching: .images) {
+                        Label("Select Image", systemImage: "photo")
+                            .font(.caption)
+                    }
+                    if selectedImage != nil {
+                        Button(action: clearImage) {
+                            Label("Clear", systemImage: "xmark.circle.fill")
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+                    }
+                    if manager.isAudioSupported() {
+                        Label("Audio Ready", systemImage: "mic.fill")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                    }
+                }
+                .padding(.horizontal)
+
+                // Image preview
+                if let image = selectedImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 150)
+                        .cornerRadius(8)
+                        .padding(.horizontal)
+                }
+            }
+
             // Input
             HStack {
                 TextField("Ask PCOS…", text: $inputText, axis: .vertical)
@@ -107,6 +144,26 @@ struct ContentView: View {
             let recommended = manager.recommendModelForDevice("chat")
             try? await manager.loadModel(recommended)
         }
+        .onChange(of: selectedItem) { _, newItem in
+            Task {
+                if let item = newItem,
+                   let data = try? await item.loadTransferable(type: Data.self),
+                   let uiImage = UIImage(data: data) {
+                    await MainActor.run {
+                        selectedImage = uiImage
+                        hasImageData = data
+                        manager.selectedImageData = data
+                    }
+                }
+            }
+        }
+    }
+
+    private func clearImage() {
+        selectedImage = nil
+        hasImageData = nil
+        selectedItem = nil
+        manager.selectedImageData = nil
     }
 
     private func execute() {
@@ -115,6 +172,9 @@ struct ContentView: View {
 
         isExecuting = true
         outputLines.append("→ \(input)")
+        if hasImageData != nil {
+            outputLines.append("  [image attached]")
+        }
         streamingText = ""
         inputText = ""
 
@@ -122,8 +182,19 @@ struct ContentView: View {
             let start = DispatchTime.now()
 
             do {
-                let result = try await manager.inferStreaming(input) { chunk in
-                    streamingText += chunk
+                let result: String
+                if let imageData = hasImageData, manager.isVisionSupported() {
+                    // Multimodal inference with image
+                    result = await manager.inferStreamingWithImage(
+                        prompt: input, imageData: imageData
+                    ) { chunk in
+                        streamingText += chunk
+                    }
+                } else {
+                    // Text-only streaming inference
+                    result = try await manager.inferStreaming(input) { chunk in
+                        streamingText += chunk
+                    }
                 }
 
                 let elapsed = DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds
